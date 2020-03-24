@@ -10,7 +10,7 @@ if __name__ == "__main__":
 
 	parser = ArgumentParser()
 	parser.add_argument("inpath", type=is_dir)
-	parser.add_argument("outpath", type=is_dir)
+	parser.add_argument("outpath") # , type=is_dir
 	parser.add_argument("--inext", type=suffix, default=".mp4")
 	parser.add_argument("--outext", type=suffix, default=".jpg")
 	parser.add_argument("--skip", action="store_true")
