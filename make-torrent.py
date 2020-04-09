@@ -8,8 +8,13 @@ from genutility.compat.os import fspath
 
 logger = logging.getLogger(__name__)
 
-def create_torrent(path, trackers=(), private=True, pieces=None, piece_size=None, predicate=None, progress=None, min_piece_exp=14, max_piece_exp=24):
-	# type: (Path, Iterable[str], Optional[int], Optional[int], int, Optional[Callable], Optional[Callable], int, int) -> bytes
+def create_torrent(path, trackers=(), private=True, pieces=None, piece_size=None, source=None, predicate=None, progress=None, min_piece_exp=14, max_piece_exp=24):
+	# type: (Path, Iterable[str], Optional[int], Optional[int], int, Optional[str], Optional[Callable], Optional[Callable], int, int) -> bytes
+
+	"""
+		min_piece_exp: default 16k
+		max_piece_exp: default 16M
+	"""
 
 	if pieces is None and piece_size is None:
 		pieces = 1000
@@ -46,7 +51,11 @@ def create_torrent(path, trackers=(), private=True, pieces=None, piece_size=None
 
 	libtorrent.set_piece_hashes(t, fspath(path.parent), partial(progress, ceil(fs.total_size() / piece_size)))
 
-	return libtorrent.bencode(t.generate())
+	d = t.generate()
+	if source:
+		d[b"info"][b"source"] = source.encode("utf-8")
+
+	return libtorrent.bencode(d)
 
 if __name__ == "__main__":
 
@@ -56,11 +65,12 @@ if __name__ == "__main__":
 	parser = ArgumentParser(description="Create torrent file")
 	parser.add_argument("inpath", type=existing_path, help="Path to files")
 	parser.add_argument("outpath", type=future_file, help="Path to put torrent file")
-	parser.add_argument("--trackers", metavar="TRACKER", nargs="*", help="List of tracker URLs")
+	parser.add_argument("--trackers", metavar="TRACKER", nargs="*", default=[], help="List of tracker URLs")
 	parser.add_argument("--silent", action="store_true", help="Don't show progress bar")
 	parser.add_argument("--private", action="store_true", help="Create private torrent")
 	parser.add_argument("--pieces", type=int, default=None, help="Approximate number of pieces in resulting torrent file. 1000 will be used if --piece-size is not given instead..")
 	parser.add_argument("--piece-size", type=int, default=None, help="Piece size. If not given, it will be automatically calculated to match --pieces.")
+	parser.add_argument("--source", default=None, help="Source value of info dict")
 	args = parser.parse_args()
 
 	if args.private and not args.trackers:
@@ -78,7 +88,7 @@ if __name__ == "__main__":
 		pbar.update()
 
 	try:
-		data = create_torrent(args.inpath, args.trackers, args.private, args.pieces, args.piece_size, predicate=predicate, progress=progress)
+		data = create_torrent(args.inpath, args.trackers, args.private, args.pieces, args.piece_size, args.source, predicate=predicate, progress=progress)
 	finally:
 		pbar.close()
 
