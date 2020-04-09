@@ -15,8 +15,6 @@ logger = logging.getLogger(__name__)
 def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
 	# type: (Path, bool, bool, bool) -> None
 
-	assert remove_originals is False
-
 	""" Recursively within `inpath`, converts bitmap files to PNG
 		and uncompressed tiff files to losslessly compressed ones.
 	"""
@@ -42,13 +40,13 @@ def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
 			newfile = path.with_suffix(".new" + path.suffix)
 			if not newfile.exists():
 				im = Image.open(path)
-				#[None, "tiff_ccitt", "group3", "group4", "tiff_jpeg", "tiff_adobe_deflate", "tiff_thunderscan", "tiff_deflate", "tiff_sgilog", "tiff_sgilog24", "tiff_raw_16"]
-				if im.info["compression"] in {"raw", "packbits", "tiff_lzw"}:
-					im.save(str(newfile), "tiff", compression="tiff_lzw", tiffinfo=im.tag) # might lose metadata
+				if im.info["compression"] in {"raw", "tiff_raw_16", "packbits", "tiff_lzw"}: # bad lossless compression
+					im.save(str(newfile), "tiff", compression="tiff_deflate", tiffinfo=im.tag) # might lose metadata
 
 					if newfile.stat().st_size >= path.stat().st_size:
 						logger.info("Tried to convert %s, but the result file was larger than the original", path)
 						newfile.unlink()
+						continue
 
 					copystat(path, newfile)
 					logger.info("Coverted: %s\n-> %s", path, newfile)
@@ -57,11 +55,17 @@ def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
 						del im
 						replace(newfile, path)
 
-				elif im.info["compression"] == "tiff_lzw":
+				elif im.info["compression"] in {"tiff_adobe_deflate", "tiff_deflate"}: # good lossless compression
 					logger.debug("%s is already compressed", path)
 
+				elif im.info["compression"] in {"tiff_jpeg", "jpeg"}: # lossy compression
+					logger.debug("%s is already lossy compressed", path)
+
+				elif im.info["compression"] in {"tiff_ccitt", "group3", "group4", "tiff_thunderscan", "tiff_sgilog", "tiff_sgilog24", "lzma", "zstd", "webp"}:
+					raise RuntimeError("{} uses an unhandled TIFF compression : {}".format(path, im.info))
+
 				else:
-					raise RuntimeError("Unknown TIFF Compression: {}".format(im.info))
+					raise RuntimeError("{} uses an unknown TIFF compression : {}".format(path, im.info))
 
 if __name__ == "__main__":
 
@@ -73,7 +77,7 @@ if __name__ == "__main__":
 	parser.add_argument("--bitmaps", action="store_true")
 	parser.add_argument("--tiffs", action="store_true")
 	parser.add_argument("--remove-originals", action="store_true", help="Remove the original image files after they have been converted")
-	parser.add_argument("-v", "--verbose", action="store_true", help="Desplay debug messages")
+	parser.add_argument("-v", "--verbose", action="store_true", help="Display debug messages")
 	args = parser.parse_args()
 
 	assert args.bitmaps or args.tiffs, "Must specify at least one file format to convert"
