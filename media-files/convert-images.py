@@ -28,7 +28,7 @@ def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
 				try:
 					Image.open(path).save(pngfile, compress_level=9)
 					copystat(path, pngfile)
-					logger.info("Coverted: %s\n-> %s", path, pngfile)
+					logger.info("Converted: %s\n-> %s", path, pngfile)
 
 					if remove_originals:
 						path.unlink()
@@ -49,7 +49,7 @@ def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
 						continue
 
 					copystat(path, newfile)
-					logger.info("Coverted: %s\n-> %s", path, newfile)
+					logger.info("Converted: %s\n-> %s", path, newfile)
 
 					if remove_originals:
 						del im
