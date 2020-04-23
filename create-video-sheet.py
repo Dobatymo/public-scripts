@@ -7,6 +7,9 @@ from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
 from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
+from genutility.compat.os import fspath
+from genutility.math import byte2size_str
+from genutility.pillow import multiline_textsize
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -20,6 +23,8 @@ except ImportError:
 	cv2 = CvVideo.import_backend()
 	BackendCls = CvVideo
 	logging.warning("Using cv2 backend")
+
+DEFAULT_TEMPLATE = "File name: {filename}\nFile size: {filesize_bytes} bytes\nResolution: {width}x{height}\nDuration: {duration}"
 
 class EveryX(BackendCls):
 
@@ -45,23 +50,37 @@ class FramesX(BackendCls):
 			return None
 		return duration // (self.frames - 1)
 
-def create_sheet(frames, dar, cols, rows, maxthumbsize=(128, 128), padding=(5, 5), background="black",
-	textcolor="white", timestamp=True, fontfile="arial.ttf", fontsize=10):
+def create_header(path, meta, template=None):
+	# type: (Path, dict, Optional[str]) -> str
 
-	assert dar, "DAR not given"
-	assert rows, "Variable row count not implement yet"
+	filesize = path.stat().st_size
 
-	ttf = ImageFont.truetype(fontfile, fontsize)
+	template = template or DEFAULT_TEMPLATE
 
-	max_width, max_height = maxthumbsize
-	pad_width, pad_height = padding
+	fkwargs = {
+		"path": fspath(path),
+		"filename": path.name,
+		"filesize_human": byte2size_str(filesize),
+		"filesize_bytes": filesize,
+		"modtime": path.stat().st_mtime,
+		"duration": meta["duration"],
+		"width": meta["width"],
+		"height": meta["height"],
+		"fps": float(meta["fps"]),
+		"dar": meta["display_aspect_ratio"],
+	}
 
-	thumb_width, thumb_height = resize_oar(max_width, max_height, dar)
+	return template.format(**fkwargs)
+
+def calc_sheet_size(cols, rows, thumb_width, thumb_height, pad_width, pad_height):
 
 	sheet_width = thumb_width * cols + pad_width * (cols + 1)
 	sheet_height = thumb_height * rows + pad_height * (rows + 1)
 
-	grid = Image.new("RGB", (sheet_width, sheet_height), background)
+	return sheet_width, sheet_height
+
+def _create_sheet(grid, frames, cols, rows, thumb_width, thumb_height, pad_width, pad_height, textcolor, ttf, y_offset=0, timestamp=True):
+
 	d = ImageDraw.Draw(grid)
 
 	def no_good_frame(iterator, e):
@@ -79,18 +98,46 @@ def create_sheet(frames, dar, cols, rows, maxthumbsize=(128, 128), padding=(5, 5
 
 		td = timedelta(seconds=frametime)
 
+		#if timestamp:
+		#	from genutility.pillow import write_text
+		#	write_text(thumbnail, td.isoformat(), align, textcolor, textoutlinecolor, fontratio, padding=(1, 1))
+
 		if i == rows * cols:
 			raise RuntimeError("more image extracted than needed")
 
 		y, x = to_2d_index(i, cols)
 
 		grid_x = thumb_width * x + pad_width * (x + 1)
-		grid_y = thumb_height * y + pad_height * (y + 1)
+		grid_y = thumb_height * y + pad_height * (y + 1) + y_offset
 		grid.paste(thumbnail, (grid_x, grid_y))
 		if timestamp:
 			d.text((grid_x, grid_y), str(td), fill=textcolor, font=ttf)
 
 	return grid
+
+def create_sheet(frames, dar, cols, rows, maxthumbsize=(128, 128), padding=(5, 5), background="black",
+	textcolor="white", ttf=None, timestamp=True, headertext=None, spacing=4):
+
+	assert dar, "DAR not given"
+	assert rows, "Variable row count not implement yet"
+
+	max_width, max_height = maxthumbsize
+	pad_width, pad_height = padding
+	thumb_width, thumb_height = resize_oar(max_width, max_height, dar)
+	sheet_width, sheet_height = calc_sheet_size(cols, rows, thumb_width, thumb_height, pad_width, pad_height)
+
+	if headertext:
+		header_width, header_height = multiline_textsize(headertext, ttf, spacing)
+	else:
+		header_width, header_height = 0, 0
+
+	grid = Image.new("RGB", (sheet_width, sheet_height + header_height), background)
+
+	if headertext:
+		d = ImageDraw.Draw(grid)
+		d.multiline_text((0, 0), headertext, fill=textcolor, font=ttf, spacing=spacing)
+
+	return _create_sheet(grid, frames, cols, rows, thumb_width, thumb_height, pad_width, pad_height, textcolor, ttf, header_height, timestamp)
 
 def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
 
@@ -99,10 +146,23 @@ def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
 	elif seconds:
 		context = EveryX(inpath, seconds)
 
+	if args["header"] or args["timestamp"]:
+		fontfile = args.get("fontfile", "arial.ttf")
+		fontsize = args.get("fontsize", 10)
+		ttf = ImageFont.truetype(fontfile, fontsize)
+	else:
+		ttf = None
+
 	with context as video:
 		dar = video.meta["display_aspect_ratio"]
+
+		if args["header"]:
+			headertext = create_header(inpath, video.meta)
+		else:
+			headertext = None
+
 		sheet = create_sheet(video.iterate(), dar, cols, rows, args["thumbsize"], args["padding"],
-			args["background"], args["textcolor"], args["timestamp"], args["fontfile"], args["fontsize"])
+			args["background"], args["textcolor"], ttf, args["timestamp"], headertext)
 
 		if not dry:
 			sheet.save(outpath, quality=args["quality"])
@@ -128,18 +188,20 @@ if __name__ == "__main__":
 	group.add_argument("-s", "--seconds", metavar="N", type=int, help="Grab a video frame every N seconds")
 	parser.add_argument("--cols", metavar="C", type=int, help="Number of columns")
 
+	parser.add_argument("-e", "--header", action="store_true", help="Add file meta information to the sheet.")
 	parser.add_argument("--thumbsize", nargs=2, metavar=("W", "H"), type=int, default=(250, 250), help="Maximum dimensions of thumbnails")
 	parser.add_argument("--padding", nargs=2, metavar=("W", "H"), type=int, default=(5, 5), help="Padding between thumbnails")
 	parser.add_argument("--background", type=str, default="black", help="Background color")
 	parser.add_argument("--textcolor", type=str, default="white", help="Text color")
-	parser.add_argument("--timestamp", action="store_true", help="Include timestamp in thumbnails")
+	parser.add_argument("-t", "--timestamp", action="store_true", help="Include timestamp in thumbnails")
 	parser.add_argument("--fontfile", default="arial.ttf", help="Path to truetype font file")
 	parser.add_argument("--fontsize", type=int, default=10, help="Fontsize")
-	parser.add_argument("-q", "--quality", type=in_range(1, 101), default=80, help="JPEG output quality, ignored if outpath is not .jpg")
+	parser.add_argument("--quality", type=in_range(1, 101), default=80, help="JPEG output quality, ignored if outpath is not .jpg")
 	parser.add_argument("-d", "--dry", action="store_true", help="If set, no files are actually created")
 	args = parser.parse_args()
 
 	argsdict = {
+		"header": args.header,
 		"thumbsize": args.thumbsize,
 		"padding": args.padding,
 		"background": args.background,
@@ -215,6 +277,7 @@ if __name__ == "__main__":
 			if args.overwrite or not outpath.exists():
 				logging.info("Processing %s", inpath)
 
+				#filerelpath = inpath.relative_to(args.inpath)
 				try:
 					main(inpath, outpath, cols, rows, seconds, argsdict, args.dry)
 				except NoGoodFrame:
