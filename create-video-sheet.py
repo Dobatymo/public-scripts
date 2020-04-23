@@ -1,30 +1,37 @@
 from __future__ import absolute_import, division, print_function, unicode_literals
 
-import logging
+import logging, platform
 from datetime import timedelta
 
+from genutility.compat.os import fspath
 from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
-from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
-from genutility.compat.os import fspath
 from genutility.math import byte2size_str
 from genutility.pillow import multiline_textsize
+from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
 
 from PIL import Image, ImageDraw, ImageFont
+
+if platform.system() == "Linux":
+	DEFAULT_FONTFILE = "LiberationSans-Regular.ttf"
+else:
+	DEFAULT_FONTFILE = "arial.ttf"
+DEFAULT_FONTSIZE = 10
+DEFAULT_TEMPLATE = "File name: {filename}\nFile size: {filesize_bytes} bytes\nResolution: {width}x{height}\nDuration: {duration}"
+
+logger = logging.getLogger(__name__)
 
 try:
 	av = AvVideo.import_backend()
 	BackendCls = AvVideo
-	av.logging.restore_default_callback()
-	logging.warning("Using av backend")
+	#av.logging.restore_default_callback()
+	logger.warning("Using av backend")
 
 except ImportError:
 	cv2 = CvVideo.import_backend()
 	BackendCls = CvVideo
-	logging.warning("Using cv2 backend")
-
-DEFAULT_TEMPLATE = "File name: {filename}\nFile size: {filesize_bytes} bytes\nResolution: {width}x{height}\nDuration: {duration}"
+	logger.warning("Using cv2 backend")
 
 class EveryX(BackendCls):
 
@@ -84,12 +91,12 @@ def _create_sheet(grid, frames, cols, rows, thumb_width, thumb_height, pad_width
 	d = ImageDraw.Draw(grid)
 
 	def no_good_frame(iterator, e):
-		logging.warning("Video file was not processed completely: %s", e)
+		logger.warning("Video file was not processed completely: %s", e)
 
 	for i, (frametime, frame) in enumerate(iter_except(frames, {NoGoodFrame: no_good_frame}, True)):
 
 		if isinstance(frame, Exception):
-			logging.warning("Skipping frame %s (%s)", frametime, frame)
+			logger.warning("Skipping frame %s (%s)", frametime, frame)
 			continue
 
 		image = Image.fromarray(frame)
@@ -147,8 +154,8 @@ def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
 		context = EveryX(inpath, seconds)
 
 	if args["header"] or args["timestamp"]:
-		fontfile = args.get("fontfile", "arial.ttf")
-		fontsize = args.get("fontsize", 10)
+		fontfile = args.get("fontfile", DEFAULT_FONTFILE)
+		fontsize = args.get("fontsize", DEFAULT_FONTSIZE)
 		ttf = ImageFont.truetype(fontfile, fontsize)
 	else:
 		ttf = None
@@ -212,22 +219,17 @@ if __name__ == "__main__":
 		"quality": args.quality,
 	}
 
-	try:
-		import chromalog
-		logmodule = chromalog
-	except ImportError:
-		logmodule = logging
-
-	"""try:
-		import coloredlogs
-		coloredlogs.install(fmt="%(asctime)s,%(msecs)03d %(hostname)s %(name)s[%(process)d] %(levelname)s %(message)s")
-	except ImportError:
-		pass"""
-
 	if args.verbose:
-		logmodule.basicConfig(level=logging.DEBUG)
+		logger.setLevel(level=logging.DEBUG)
 	else:
-		logmodule.basicConfig(level=logging.INFO)
+		logger.setLevel(level=logging.INFO)
+
+	try:
+		from chromalog import ColorizingStreamHandler
+		logger.addHandler(ColorizingStreamHandler())
+	except ImportError:
+		from warnings import warn
+		warn("Could not import chromalog, showing uncolored logs")
 
 	if args.colsrows:
 		cols, rows = args.colsrows
@@ -264,7 +266,7 @@ if __name__ == "__main__":
 				continue
 
 			if inpath.suffix not in video_suffixes:
-				logging.debug("Skipping non-video file %s", inpath)
+				logger.debug("Skipping non-video file %s", inpath)
 				continue
 
 			if args.outpath is None:
@@ -275,17 +277,17 @@ if __name__ == "__main__":
 				outpath = outpath / Path(inpath.name).with_suffix(args.format)
 
 			if args.overwrite or not outpath.exists():
-				logging.info("Processing %s", inpath)
+				logger.info("Processing %s", inpath)
 
 				#filerelpath = inpath.relative_to(args.inpath)
 				try:
 					main(inpath, outpath, cols, rows, seconds, argsdict, args.dry)
 				except NoGoodFrame:
-					logging.warning("Skipping broken file %s", inpath)
+					logger.warning("Skipping broken file %s", inpath)
 				except Exception:
-					logging.exception("Skipping %s", inpath)
+					logger.exception("Skipping %s", inpath)
 			else:
-				logging.info("Skipping existing file %s", inpath)
+				logger.info("Skipping existing file %s", inpath)
 
 	else:
 		parser.error("inpath is neither file nor directory")
