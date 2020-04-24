@@ -24,39 +24,58 @@ DEFAULT_PADDING = (5, 5)
 logger = logging.getLogger(__name__)
 
 try:
-	av = AvVideo.import_backend()
-	BackendCls = AvVideo
-	#av.logging.restore_default_callback()
-	logger.warning("Using av backend")
-
-except ImportError:
 	cv2 = CvVideo.import_backend()
 	BackendCls = CvVideo
 	logger.warning("Using cv2 backend")
 
+except ImportError:
+	av = AvVideo.import_backend()
+	BackendCls = AvVideo
+	logger.warning("Using av backend")
+
 class EveryX(BackendCls):
 
 	def __init__(self, path, seconds):
+		#type: (str, float) -> None
+
 		BackendCls.__init__(self, path)
+		assert seconds > 0.
 		self.seconds = seconds
 
-	def calculate_step(self, time_base, duration):
+	def calculate_offsets(self, time_base, duration):
 		# type: (Fraction, int) -> int
 
-		return self.seconds * time_base.denominator // time_base.numerator
+		steps = ceil(duration * time_base / self.seconds)
+		for i in range(0, steps):
+			yield int(i * self.seconds / time_base)
 
 class FramesX(BackendCls):
 
-	def __init__(self, path, frames):
-		BackendCls.__init__(self, path)
-		self.frames = frames
+	def __init__(self, path, frames, include_sides=False):
+		#type: (str, int) -> None
 
-	def calculate_step(self, time_base, duration):
+		""" if include_sides is True, the first and last frame will be included.
+		"""
+
+		BackendCls.__init__(self, path)
+		assert frames > 0
+		self.frames = frames
+		self.include_sides = include_sides
+
+	def calculate_offsets(self, time_base, duration):
 		# type: (Fraction, int) -> int
 
-		if self.frames == 1:
-			return None
-		return duration // (self.frames - 1)
+		duration_incl = duration - 1
+
+		if self.include_sides:
+			parts = self.frames - 1
+			part_offset = 0
+		else:
+			parts = self.frames + 1
+			part_offset = 1
+
+		for i in range(part_offset, self.frames + part_offset):
+			yield int(i * duration_incl / parts)
 
 def create_header(path, meta, template=None):
 	# type: (Path, dict, Optional[str]) -> str
@@ -220,17 +239,20 @@ if __name__ == "__main__":
 		"quality": args.quality,
 	}
 
-	if args.verbose:
-		logger.setLevel(level=logging.DEBUG)
-	else:
-		logger.setLevel(level=logging.INFO)
-
 	try:
-		from chromalog import ColorizingStreamHandler
-		logger.addHandler(ColorizingStreamHandler())
+		#from chromalog import ColorizingStreamHandler
+		#logger.addHandler(ColorizingStreamHandler())
+		import chromalog
+		logmodule = chromalog
 	except ImportError:
 		from warnings import warn
 		warn("Could not import chromalog, showing uncolored logs")
+		logmodule = logging
+
+	if args.verbose:
+		logmodule.basicConfig(level=logging.DEBUG)
+	else:
+		logmodule.basicConfig(level=logging.INFO)
 
 	if args.colsrows:
 		cols, rows = args.colsrows
