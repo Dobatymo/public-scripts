@@ -19,6 +19,7 @@ else:
 	DEFAULT_FONTFILE = "arial.ttf"
 DEFAULT_FONTSIZE = 10
 DEFAULT_TEMPLATE = "File name: {filename}\nFile size: {filesize_bytes} bytes\nResolution: {width}x{height}\nDuration: {duration}"
+DEFAULT_PADDING = (5, 5)
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ def _create_sheet(grid, frames, cols, rows, thumb_width, thumb_height, pad_width
 
 	return grid
 
-def create_sheet(frames, dar, cols, rows, maxthumbsize=(128, 128), padding=(5, 5), background="black",
+def create_sheet(frames, dar, cols, rows, maxthumbsize=(128, 128), padding=DEFAULT_PADDING, background="black",
 	textcolor="white", ttf=None, timestamp=True, headertext=None, spacing=4):
 
 	assert dar, "DAR not given"
@@ -197,12 +198,12 @@ if __name__ == "__main__":
 
 	parser.add_argument("-e", "--header", action="store_true", help="Add file meta information to the sheet.")
 	parser.add_argument("--thumbsize", nargs=2, metavar=("W", "H"), type=int, default=(250, 250), help="Maximum dimensions of thumbnails")
-	parser.add_argument("--padding", nargs=2, metavar=("W", "H"), type=int, default=(5, 5), help="Padding between thumbnails")
+	parser.add_argument("--padding", nargs=2, metavar=("W", "H"), type=int, default=DEFAULT_PADDING, help="Padding between thumbnails")
 	parser.add_argument("--background", type=str, default="black", help="Background color")
 	parser.add_argument("--textcolor", type=str, default="white", help="Text color")
 	parser.add_argument("-t", "--timestamp", action="store_true", help="Include timestamp in thumbnails")
-	parser.add_argument("--fontfile", default="arial.ttf", help="Path to truetype font file")
-	parser.add_argument("--fontsize", type=int, default=10, help="Fontsize")
+	parser.add_argument("--fontfile", default=DEFAULT_FONTFILE, help="Path to truetype font file")
+	parser.add_argument("--fontsize", type=int, default=DEFAULT_FONTSIZE, help="Fontsize")
 	parser.add_argument("--quality", type=in_range(1, 101), default=80, help="JPEG output quality, ignored if outpath is not .jpg")
 	parser.add_argument("-d", "--dry", action="store_true", help="If set, no files are actually created")
 	args = parser.parse_args()
