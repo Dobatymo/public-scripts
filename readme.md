@@ -38,6 +38,10 @@ Find duplicates files based on binary content or semantic fingerprinting.
 
 Creates a torrent file from a file or directory. Support various piece sizes and also the source tag used on some private trackers.
 
+## merge-dirs
+
+Merge the contents of two directories into one. Kind of replicates the behaviour of the Windows Explorer which is not possible with `mv` on Linux.
+
 ## video-grabs-screenshots
 
 Grabs fullsize screenshots from video files.
