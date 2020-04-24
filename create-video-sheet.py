@@ -265,7 +265,7 @@ if __name__ == "__main__":
 			if not inpath.is_file():
 				continue
 
-			if inpath.suffix not in video_suffixes:
+			if inpath.suffix.lower() not in video_suffixes:
 				logger.debug("Skipping non-video file %s", inpath)
 				continue
 
