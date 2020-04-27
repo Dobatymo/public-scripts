@@ -3,7 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 import logging
 
 from genutility.compat.pathlib import Path
-from genutility.videofile import grab_pic
+from genutility.videofile import grab_pic, NoGoodFrame
 from genutility.args import suffix, existing_path, between
 
 if __name__ == "__main__":
@@ -36,3 +36,5 @@ if __name__ == "__main__":
 				grab_pic(path_in, path_out, pos, args.overwrite, args.backend)
 			except FileExistsError:
 				logging.info("Skipping existing file %s", path_in)
+			except NoGoodFrame as e:
+				logging.warning("Could not grab frame from %s: %s", path_in, e)
