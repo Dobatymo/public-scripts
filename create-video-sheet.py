@@ -199,7 +199,7 @@ if __name__ == "__main__":
 	from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
 
 	from genutility.compat.pathlib import Path
-	from genutility.args import existing_path, in_range, abs_path
+	from genutility.args import existing_path, in_range, abs_path, suffix
 	from genutility.filesystem import fileextensions
 
 	parser = ArgumentParser(description="Create video sheet / grid of thumbnails from video file.", formatter_class=ArgumentDefaultsHelpFormatter)
@@ -208,7 +208,7 @@ if __name__ == "__main__":
 	parser.add_argument("-v", "--verbose", action="store_true", help="Enable debugging output")
 	parser.add_argument("-w", "--overwrite", action="store_true", help="Overwrite existing files")
 	parser.add_argument("-r", "--recursive", action="store_true", help="Recurse into subfolders if input is a directory.")
-	parser.add_argument("-f", "--format", choices=(".jpg", ".png", ".webp", ".tiff"), default=".jpg", help="Picture format of the output file, if outpath is a directory.")
+	parser.add_argument("-f", "--format", type=suffix, choices=(".jpg", ".png", ".webp", ".tiff"), default=".jpg", help="Picture format of the output file, if outpath is a directory.")
 
 	group = parser.add_mutually_exclusive_group(required=True)
 	group.add_argument("--colsrows", nargs=2, metavar=("C", "R"), type=int, help="Create sheet with C columns and R rows. Thumbnails will be equally spaced timewise.")
@@ -267,10 +267,10 @@ if __name__ == "__main__":
 		seconds = args.seconds
 
 	if args.inpath.is_file():
-
 		if args.outpath is None:
 			outpath = args.inpath.with_suffix(args.format)
 		else:
+			assert not args.outpath.is_dir()
 			outpath = args.outpath
 
 		main(args.inpath, outpath, cols, rows, seconds, argsdict, args.dry)
