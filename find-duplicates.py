@@ -12,8 +12,8 @@ from genutility.hash import hash_file
 from genutility.filesystem import scandir_rec, fileextensions
 from genutility.metrics import hamming_distance
 from genutility.iter import progress
-from ferutility.metrictree import BKTree
-from ferutility.fingerprinting import phash_blockmean
+from genutility.metrictree import BKTree
+from genutility.fingerprinting import phash_blockmean
 
 def metrohash(path):
 	return hash_file(path, MetroHash128).digest()
