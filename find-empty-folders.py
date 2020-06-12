@@ -4,18 +4,16 @@ from builtins import str
 import os, logging
 from fnmatch import fnmatch
 
-from genutility.deprecated_filesystem import listdir_rec_adv
-from genutility.args import is_dir
+from genutility.filesystem import scandir_counts
 
 def log_error(path, exc):
 	logging.warning("Removing %s failed", path)
 
 def enum_empty_dirs(dirpath, pattern="*"):
-	for path, dc, fc in listdir_rec_adv(dirpath, dirs=True, files=False):
-		if dc == 0 and fc == 0:
-			filename = os.path.basename(path)
-			if fnmatch(filename, pattern):
-				yield path
+	for entry, counts in scandir_counts(dirpath, files=False):
+		if counts.null():
+			if fnmatch(entry.name, pattern):
+				yield entry.path
 
 def find_empty_dirs(dirpath, pattern="*", remove=False, errorfunc=log_error):
 	# type(str, str) -> None
@@ -32,6 +30,7 @@ def find_empty_dirs(dirpath, pattern="*", remove=False, errorfunc=log_error):
 
 if __name__ == "__main__":
 	from argparse import ArgumentParser
+	from genutility.args import is_dir
 
 	parser = ArgumentParser(description="Delete empty folders. Run multiple times.")
 	parser.add_argument("directory", type=is_dir, help="Directory to search")

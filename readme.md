@@ -33,6 +33,7 @@ Creates video sheets for video files. A video sheet is an image with multiple th
 ## find-duplicates
 
 Find duplicates files based on binary content or semantic fingerprinting.
+`pip install numpy genutility[metrics,fingerprinting] pillow metrohash-python tqdm`
 
 ## make-torrent
 

@@ -41,11 +41,11 @@ if __name__== "__main__":
 
 	if args.inpath.is_dir():
 		for infile in scandir_rec(args.inpath, dirs=False, relative=True):
-			outfile = args.outpath / infile.path
+			outfile = args.outpath / infile.relpath
 			print("In file: " + infile)
 			print("Out file: " + outfile)
 			try:
-				sync_srt(infile.abspath, outfile, func)
+				sync_srt(infile.path, outfile, func)
 			except MalformedFileException as e:
 				print("error: file is malformed")
 	else:
