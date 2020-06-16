@@ -2,6 +2,7 @@ import logging, os, errno
 
 from genutility.compat import FileExistsError
 from genutility.compat.os import fspath, replace
+from genutility.exceptions import assert_choice
 
 def remove_empty_error_log(path, e):
 	if e.errno != errno.ENOTEMPTY:
@@ -31,9 +32,10 @@ MODES = ("fail", "no_move", "overwrite", "rename")
 
 def merge(src, dst, mode="no_move"):
 
-	assert mode in MODES
+	assert_choice("mode", mode, MODES)
 
-	assert src.is_dir() and dst.is_dir()
+	if not src.is_dir() or not dst.is_dir():
+		raise ValueError("src and dst must be directories")
 
 	for path in src.rglob("*"):
 

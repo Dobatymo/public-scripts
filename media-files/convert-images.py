@@ -74,13 +74,14 @@ if __name__ == "__main__":
 
 	parser = ArgumentParser()
 	parser.add_argument("path", type=is_dir, help="Path to scan for image files")
-	parser.add_argument("--bitmaps", action="store_true")
-	parser.add_argument("--tiffs", action="store_true")
+	parser.add_argument("--bitmaps", action="store_true", help="Convert bmp images")
+	parser.add_argument("--tiffs", action="store_true", help="Convert tiff images")
 	parser.add_argument("--remove-originals", action="store_true", help="Remove the original image files after they have been converted")
 	parser.add_argument("-v", "--verbose", action="store_true", help="Display debug messages")
 	args = parser.parse_args()
 
-	assert args.bitmaps or args.tiffs, "Must specify at least one file format to convert"
+	if not any([args.bitmaps, args.tiffs]):
+		parser.error("Must specify at least one file format to convert")
 
 	if args.verbose:
 		logging.basicConfig(level=logging.DEBUG)

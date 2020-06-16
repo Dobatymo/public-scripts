@@ -25,15 +25,18 @@ def delete_tags_from_wma(path, tags):
 
 if __name__ == "__main__":
 
-	from genutility.ops import logical_xor
 	from argparse import ArgumentParser
+	from genutility.ops import logical_xor
+	from genutility.args import is_dir
+
 	parser = ArgumentParser()
-	parser.add_argument("path")
+	parser.add_argument("path", type=is_dir)
 	parser.add_argument("--tags", nargs="*")
 	parser.add_argument("--napster", action="store_true")
 	args = parser.parse_args()
 
-	assert logical_xor(args.napster, args.tags), "Either --napster or --tags must be specified"
+	if not logical_xor(args.napster, args.tags):
+		parser.error("Either --napster or --tags must be specified")
 
 	if args.napster:
 		tags = ["WM/NapsterHeader"]

@@ -19,11 +19,12 @@ def create_torrent(path, trackers=(), private=True, pieces=None, piece_size=None
 	if pieces is None and piece_size is None:
 		pieces = 1000
 	elif pieces is None and piece_size is not None:
-		assert piece_size % 16384 == 0
+		if piece_size % 16384 != 0:
+			raise ValueError("piece_size must be a multiple of 16384")
 	elif pieces is not None and piece_size is None:
 		pass
 	else:
-		assert False, "Cannot specify `pieces` and `piece_size`"
+		raise ValueError("Cannot specify `pieces` and `piece_size`")
 
 	fs = libtorrent.file_storage()
 

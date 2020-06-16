@@ -39,7 +39,8 @@ class EveryX(BackendCls):
 		#type: (str, float) -> None
 
 		BackendCls.__init__(self, path)
-		assert seconds > 0.
+		if seconds <= 0.:
+			raise ValueError("seconds must be larger than 0")
 		self.seconds = seconds
 
 	def calculate_offsets(self, time_base, duration):
@@ -58,7 +59,8 @@ class FramesX(BackendCls):
 		"""
 
 		BackendCls.__init__(self, path)
-		assert frames > 0
+		if frames <= 0:
+			raise ValueError("frames must be larger than 0")
 		self.frames = frames
 		self.include_sides = include_sides
 
@@ -145,8 +147,8 @@ def _create_sheet(grid, frames, cols, rows, thumb_width, thumb_height, pad_width
 def create_sheet(frames, dar, cols, rows, maxthumbsize=(128, 128), padding=DEFAULT_PADDING, background="black",
 	textcolor="white", ttf=None, timestamp=True, headertext=None, spacing=4):
 
-	assert dar, "DAR not given"
-	assert rows, "Variable row count not implement yet"
+	if not rows:
+		raise ValueError("Variable row count not implement yet")
 
 	max_width, max_height = maxthumbsize
 	pad_width, pad_height = padding
