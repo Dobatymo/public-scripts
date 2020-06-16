@@ -14,7 +14,7 @@ if __name__ == "__main__":
 
 	parser = ArgumentParser()
 	parser.add_argument("inpath", type=existing_path)
-	parser.add_argument("outpath", nargs="?", type=Path) # , type=is_dir
+	parser.add_argument("outpath", nargs="?", type=Path)
 	parser.add_argument("-v", "--verbose", action="store_true", help="Enable debugging output")
 	parser.add_argument("-f", "--format", type=suffix, choices=(".jpg", ".png", ".tiff"), default=".png", help="Picture format of the output file, if outpath is a directory.")
 	parser.add_argument("-w", "--overwrite", action="store_true", help="Overwrite existing files")
@@ -47,7 +47,8 @@ if __name__ == "__main__":
 		if args.outpath is None:
 			path_out = args.outpath.with_suffix(args.format)
 		else:
-			assert not args.outpath.is_dir()
+			if args.outpath.is_dir():
+				raise ValueError("outpath cannot be a directory if inpath is a file")
 
 			path_out = args.outpath
 
