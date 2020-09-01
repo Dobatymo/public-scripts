@@ -3,6 +3,7 @@ from __future__ import absolute_import, division, print_function, unicode_litera
 from future.utils import viewitems
 import logging
 from collections import defaultdict
+from hashlib import sha1
 
 import numpy as np
 from metrohash import MetroHash128
@@ -14,9 +15,48 @@ from genutility.metrics import hamming_distance
 from genutility.iter import progress
 from genutility.metrictree import BKTree
 from genutility.fingerprinting import phash_blockmean
+from genutility.fileformats.jfif import hash_raw_jpeg
+from genutility.fileformats.png import hash_raw_png
+from genutility.hash import sha1_hash_file
+from genutility.exceptions import ParseError
+
+class Skip(Exception):
+	pass
 
 def metrohash(path):
 	return hash_file(path, MetroHash128).digest()
+
+def nometahash(path):
+	lowerpath = path.lower()
+
+	if lowerpath.endswith(".jpg") or lowerpath.endswith(".jpeg"):
+		hashobj = sha1()
+		try:
+			hash_raw_jpeg(path, hashobj)
+		except ParseError as e:
+			logging.info("Skipping invalid JPEG file %s: %s", path, e)
+			raise Skip()
+		except EOFError:
+			logging.info("Skipping truncated JPEG file %s", path)
+			raise Skip()
+
+		return hashobj.digest()
+
+	elif lowerpath.endswith(".png"):
+		hashobj = sha1()
+		try:
+			hash_raw_png(path, hashobj)
+		except ParseError as e:
+			logging.info("Skipping invalid PNG file %s: %s", path, e)
+			raise Skip()
+		except EOFError:
+			logging.info("Skipping truncated PNG file %s", path)
+			raise Skip()
+
+		return hashobj.digest()
+
+	else:
+		raise Skip()
 
 IGNORE_DIRNAMES = {".git"}
 
@@ -46,7 +86,7 @@ def image_hash_tree(dirs, exts=None, processfunc=None):
 
 				if ext in exts:
 					try:
-						img = Image.open(entry.path)
+						img = Image.open(entry.path, "r")
 					except OSError:
 						logging.warning("Cannot open image: %s", entry.path)
 					else:
@@ -58,13 +98,13 @@ def image_hash_tree(dirs, exts=None, processfunc=None):
 
 	return tree, map
 
-def iter_size_hashes(dups):
+def iter_size_hashes(dups, hashfunc):
 	for size, group in viewitems(dups):
 		hashes = defaultdict(list)
 
 		for path in group:
 			try:
-				hash = metrohash(path)
+				hash = hashfunc(path)
 			except PermissionError:
 				logging.warning("Permission denied: %s", path)
 			except FileNotFoundError:
@@ -74,18 +114,20 @@ def iter_size_hashes(dups):
 
 		yield size, hashes
 
-def dupgroups(dirs):
+def dupgroups(dirs, hashfunc):
 	dups = defaultdict(list)
 
 	logging.info("Collecting files")
 	for size, path in progress(iter_size_path(dirs)):
 		dups[size].append(path)
+	logging.info("Found %s size groups", len(dups))
 
 	logging.info("Filtering files based on size")
 	dups = {k: v for k, v in viewitems(dups) if len(v) > 1}
+	logging.info("Found %s duplicate size groups", len(dups))
 
 	logging.info("Calculating hash groups")
-	for size, hashes in progress(iter_size_hashes(dups), length=len(dups)):
+	for size, hashes in progress(iter_size_hashes(dups, hashfunc), length=len(dups)):
 		dups[size] = hashes
 
 	logging.info("Filtering files based on hashes")
@@ -97,22 +139,53 @@ def dupgroups(dirs):
 
 	return newdups
 
+def dupgroups_no_size(dirs, hashfunc):
+	dups = defaultdict(list)
+
+	logging.info("Calculating hash groups")
+	for size, path in progress(iter_size_path(dirs)):
+		try:
+			hash = hashfunc(path)
+		except PermissionError:
+			logging.warning("Permission denied: %s", path)
+		except FileNotFoundError:
+			logging.warning("File not found: %s", path)
+		except Skip:
+			pass
+		else:
+			dups[hash].append((path, size))
+	logging.info("Found %s hash groups", len(dups))
+
+	logging.info("Filtering files based on hash")
+	dups = {k: v for k, v in viewitems(dups) if len(v) > 1}
+	logging.info("Found %s duplicate hash groups", len(dups))
+
+	return dups
+
 if __name__ == "__main__":
 
 	import csv
 	from argparse import ArgumentParser
 	from genutility.file import StdoutFile
+	from genutility.args import is_dir
 	from tqdm import tqdm
 
+	hashfuncs = {
+		"metrohash": metrohash,
+		"no-meta-sha1": nometahash,
+	}
+
 	parser = ArgumentParser()
-	parser.add_argument("directories", nargs="+", help="Directory to search")
-	parser.add_argument("--out", help="outputfile")
-	parser.add_argument("--verbose", action="store_true")
+	parser.add_argument("directories", type=is_dir, nargs="+", help="Directory to search")
+	parser.add_argument("-o", "--out", help="outputfile")
+	parser.add_argument("-v", "--verbose", action="store_true")
+	parser.add_argument("--no-size", action="store_true")
+	parser.add_argument("--hashfunc", default="metrohash", choices=hashfuncs.keys())
 
 	group = parser.add_mutually_exclusive_group(required=True)
-	group.add_argument('--exact', action='store_true')
-	group.add_argument('--images', action='store_true')
-	group.add_argument('--audio', action='store_true')
+	group.add_argument("--exact", action="store_true")
+	group.add_argument("--images", action="store_true")
+	group.add_argument("--audio", action="store_true")
 
 	args = parser.parse_args()
 
@@ -123,14 +196,27 @@ if __name__ == "__main__":
 
 	if args.exact:
 
-		grous = dupgroups(args.directories)
+		hashfunc = hashfuncs[args.hashfunc]
 
-		with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
-			csvwriter = csv.writer(csvfile)
-			csvwriter.writerow(["size", "hash", "path"])
-			for (size, hash), paths in viewitems(grous):
-				for path in paths:
-					csvwriter.writerow([size, hash.hex(), path])
+		if args.no_size:
+			grous = dupgroups_no_size(args.directories, hashfunc)
+
+			with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
+				csvwriter = csv.writer(csvfile)
+				csvwriter.writerow(["hash", "path", "size"])
+				for hash, paths_sizes in viewitems(grous):
+					for path, size in paths_sizes:
+						csvwriter.writerow([hash.hex(), path, size])
+
+		else:
+			grous = dupgroups(args.directories, hashfunc)
+
+			with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
+				csvwriter = csv.writer(csvfile)
+				csvwriter.writerow(["size", "hash", "path"])
+				for (size, hash), paths in viewitems(grous):
+					for path in paths:
+						csvwriter.writerow([size, hash.hex(), path])
 
 	elif args.images:
 
