@@ -4,6 +4,7 @@ import logging, platform
 from datetime import timedelta
 
 from genutility.compat.os import fspath
+from genutility.datetime import mdatetime
 from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
@@ -91,7 +92,7 @@ def create_header(path, meta, template=None):
 		"filename": path.name,
 		"filesize_human": byte2size_str(filesize),
 		"filesize_bytes": filesize,
-		"modtime": path.stat().st_mtime,
+		"modtime": mdatetime(path),
 		"duration": meta["duration"],
 		"width": meta["width"],
 		"height": meta["height"],
