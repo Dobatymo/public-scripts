@@ -1,9 +1,9 @@
-from __future__ import print_function, unicode_literals
-
-from genutility.filesystem import scandir_rec
-from genutility.file import is_all_byte
+from __future__ import generator_stop
 
 from argparse import ArgumentParser
+
+from genutility.file import is_all_byte
+from genutility.filesystem import scandir_rec
 
 parser = ArgumentParser()
 parser.add_argument("path")

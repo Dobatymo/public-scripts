@@ -1,9 +1,10 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
 	from io import open
+
 	from genutility.filesystem import append_to_filename
 
 	parser = ArgumentParser(description="Convert file to local linebreaks")

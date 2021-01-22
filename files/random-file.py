@@ -1,8 +1,7 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-
-from io import open
+from __future__ import generator_stop
 
 from genutility.iter import randbytes
+
 
 def create_random_file(filename, size, buffer_size=1024):
 	remaining = size

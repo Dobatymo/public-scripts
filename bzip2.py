@@ -1,9 +1,9 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
 import argparse
-from io import open
-from genutility.file import copen, copyfilelike
+
 from genutility.compat.contextlib import nullcontext
+from genutility.file import copen, copyfilelike
 
 parser = argparse.ArgumentParser()
 

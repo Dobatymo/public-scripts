@@ -1,10 +1,11 @@
+from __future__ import generator_stop
+
 import logging
-from math import log2, ceil
 from functools import partial
+from math import ceil, log2
+from os import fspath
 
 import libtorrent
-
-from genutility.compat.os import fspath
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ def create_torrent(path, trackers=(), private=True, pieces=None, piece_size=None
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
+
 	from genutility.args import existing_path, future_file
 
 	parser = ArgumentParser(description="Create torrent file")

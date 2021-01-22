@@ -1,9 +1,9 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-
-from mutagen.asf import ASF
+from __future__ import generator_stop
 
 from genutility.filesystem import scandir_rec
 from genutility.stdio import waitcontinue
+from mutagen.asf import ASF
+
 
 def delete_tags_from_wma(path, tags):
 	# type: (str, Iterable[str]) -> bool
@@ -26,8 +26,9 @@ def delete_tags_from_wma(path, tags):
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
-	from genutility.ops import logical_xor
+
 	from genutility.args import is_dir
+	from genutility.ops import logical_xor
 
 	parser = ArgumentParser()
 	parser.add_argument("path", type=is_dir)

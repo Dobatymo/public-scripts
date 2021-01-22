@@ -1,9 +1,11 @@
-from __future__ import unicode_literals
+from __future__ import generator_stop
 
-import os, os.path
+import os
+import os.path
 
-from unidecode import unidecode
 from genutility.filesystem import scandir_rec
+from unidecode import unidecode
+
 
 def convert_filenames_to_ascii(path, follow_symlinks=False, rec=False):
 	# type: (PathType, bool, bool) -> None
@@ -17,6 +19,7 @@ def convert_filenames_to_ascii(path, follow_symlinks=False, rec=False):
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
+
 	from genutility.args import is_dir
 
 	parser = ArgumentParser()

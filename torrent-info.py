@@ -1,12 +1,17 @@
-import logging, json, sys
-from pathlib import Path
+from __future__ import generator_stop
+
+import json
+import logging
+import sys
 from argparse import ArgumentParser
+from pathlib import Path
 from pprint import pprint
 
 from genutility.args import is_file
 from genutility.file import PathOrTextIO
 from genutility.json import BuiltinEncoder
 from genutility.torrent import read_torrent, torrent_info_hash
+
 
 def todict(obj):
 

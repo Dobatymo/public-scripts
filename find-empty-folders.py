@@ -1,10 +1,11 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-from builtins import str
+from __future__ import generator_stop
 
-import os, logging
+import logging
+import os
 from fnmatch import fnmatch
 
 from genutility.filesystem import scandir_counts
+
 
 def log_error(path, exc):
 	logging.warning("Removing %s failed", path)
@@ -30,6 +31,7 @@ def find_empty_dirs(dirpath, pattern="*", remove=False, errorfunc=log_error):
 
 if __name__ == "__main__":
 	from argparse import ArgumentParser
+
 	from genutility.args import is_dir
 
 	parser = ArgumentParser(description="Delete empty folders. Run multiple times.")

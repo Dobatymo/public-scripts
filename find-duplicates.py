@@ -1,24 +1,22 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
-from future.utils import viewitems
 import logging
 from collections import defaultdict
 from hashlib import sha1
 
 import numpy as np
+from genutility.exceptions import ParseError
+from genutility.fileformats.jfif import hash_raw_jpeg
+from genutility.fileformats.png import hash_raw_png
+from genutility.filesystem import entrysuffix, fileextensions, scandir_rec
+from genutility.fingerprinting import phash_blockmean
+from genutility.hash import hash_file, sha1_hash_file
+from genutility.iter import progress
+from genutility.metrics import hamming_distance
+from genutility.metrictree import BKTree
 from metrohash import MetroHash128
 from PIL import Image
 
-from genutility.hash import hash_file
-from genutility.filesystem import scandir_rec, fileextensions, entrysuffix
-from genutility.metrics import hamming_distance
-from genutility.iter import progress
-from genutility.metrictree import BKTree
-from genutility.fingerprinting import phash_blockmean
-from genutility.fileformats.jfif import hash_raw_jpeg
-from genutility.fileformats.png import hash_raw_png
-from genutility.hash import sha1_hash_file
-from genutility.exceptions import ParseError
 
 class Skip(Exception):
 	pass
@@ -99,7 +97,7 @@ def image_hash_tree(dirs, exts=None, processfunc=None):
 	return tree, map
 
 def iter_size_hashes(dups, hashfunc):
-	for size, group in viewitems(dups):
+	for size, group in dups.items():
 		hashes = defaultdict(list)
 
 		for path in group:
@@ -123,7 +121,7 @@ def dupgroups(dirs, hashfunc):
 	logging.info("Found %s size groups", len(dups))
 
 	logging.info("Filtering files based on size")
-	dups = {k: v for k, v in viewitems(dups) if len(v) > 1}
+	dups = {k: v for k, v in dups.items() if len(v) > 1}
 	logging.info("Found %s duplicate size groups", len(dups))
 
 	logging.info("Calculating hash groups")
@@ -132,8 +130,8 @@ def dupgroups(dirs, hashfunc):
 
 	logging.info("Filtering files based on hashes")
 	newdups = {}
-	for size, sizegroup in viewitems(dups):
-		for hash, hashgroup in viewitems(sizegroup):
+	for size, sizegroup in dups.items():
+		for hash, hashgroup in sizegroup.items():
 			if len(hashgroup) > 1:
 				newdups[(size, hash)] = hashgroup
 
@@ -157,7 +155,7 @@ def dupgroups_no_size(dirs, hashfunc):
 	logging.info("Found %s hash groups", len(dups))
 
 	logging.info("Filtering files based on hash")
-	dups = {k: v for k, v in viewitems(dups) if len(v) > 1}
+	dups = {k: v for k, v in dups.items() if len(v) > 1}
 	logging.info("Found %s duplicate hash groups", len(dups))
 
 	return dups
@@ -166,8 +164,9 @@ if __name__ == "__main__":
 
 	import csv
 	from argparse import ArgumentParser
-	from genutility.file import StdoutFile
+
 	from genutility.args import is_dir
+	from genutility.file import StdoutFile
 	from tqdm import tqdm
 
 	hashfuncs = {
@@ -199,22 +198,22 @@ if __name__ == "__main__":
 		hashfunc = hashfuncs[args.hashfunc]
 
 		if args.no_size:
-			grous = dupgroups_no_size(args.directories, hashfunc)
+			groups = dupgroups_no_size(args.directories, hashfunc)
 
 			with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
 				csvwriter = csv.writer(csvfile)
 				csvwriter.writerow(["hash", "path", "size"])
-				for hash, paths_sizes in viewitems(grous):
+				for hash, paths_sizes in groups.items():
 					for path, size in paths_sizes:
 						csvwriter.writerow([hash.hex(), path, size])
 
 		else:
-			grous = dupgroups(args.directories, hashfunc)
+			groups = dupgroups(args.directories, hashfunc)
 
 			with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
 				csvwriter = csv.writer(csvfile)
 				csvwriter.writerow(["size", "hash", "path"])
-				for (size, hash), paths in viewitems(grous):
+				for (size, hash), paths in groups.items():
 					for path in paths:
 						csvwriter.writerow([size, hash.hex(), path])
 
