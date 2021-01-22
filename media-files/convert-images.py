@@ -1,11 +1,11 @@
-from __future__ import unicode_literals
+from __future__ import generator_stop
 
 import logging
 from shutil import copystat
 from typing import TYPE_CHECKING
 
-from PIL import Image, UnidentifiedImageError
 from genutility.compat.os import replace
+from PIL import Image, UnidentifiedImageError
 
 if TYPE_CHECKING:
 	from pathlib import Path
@@ -70,6 +70,7 @@ def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
+
 	from genutility.args import is_dir
 
 	parser = ArgumentParser()

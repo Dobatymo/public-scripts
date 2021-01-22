@@ -1,8 +1,9 @@
-from __future__ import print_function, unicode_literals
+from __future__ import generator_stop
+
+from argparse import ArgumentParser
 
 from genutility.nltk import count_words_in_file
 
-from argparse import ArgumentParser
 parser = ArgumentParser()
 parser.add_argument("path")
 parser.add_argument("--raw", action="store_true")

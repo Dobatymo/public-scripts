@@ -1,3 +1,5 @@
+from __future__ import generator_stop
+
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -31,7 +33,8 @@ def main(inpath, tplpath, outpath, suffixes=frozenset(), prepend=""):
 
 if __name__ == "__main__":
 	from argparse import ArgumentParser
-	from genutility.args import is_dir, is_file, future_file, suffix
+
+	from genutility.args import future_file, is_dir, is_file, suffix
 
 	parser = ArgumentParser(description="""Create a file based on a template for file in directory.
 The template can contain the following Python format style placeholders: {filename}, {efilename}, {path}, {epath}, {stem}, {i}.

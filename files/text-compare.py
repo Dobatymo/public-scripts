@@ -1,8 +1,8 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
-
-from genutility.file import textfile_equal
+from __future__ import generator_stop
 
 from argparse import ArgumentParser
+
+from genutility.file import textfile_equal
 
 parser = ArgumentParser(description="Compare two text files for equality")
 parser.add_argument("file1")

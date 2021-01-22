@@ -1,4 +1,4 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
 import logging
 
@@ -7,10 +7,11 @@ logger = logging.getLogger(__name__)
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
-	from genutility.args import suffix, existing_path, between
+
+	from genutility.args import between, existing_path, suffix
 	from genutility.compat.pathlib import Path
 	from genutility.filesystem import fileextensions
-	from genutility.videofile import grab_pic, NoGoodFrame
+	from genutility.videofile import NoGoodFrame, grab_pic
 
 	parser = ArgumentParser()
 	parser.add_argument("inpath", type=existing_path)

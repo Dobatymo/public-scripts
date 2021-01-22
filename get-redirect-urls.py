@@ -1,10 +1,11 @@
-from __future__ import unicode_literals, print_function
+from __future__ import generator_stop
 
-import logging, sys
-from io import open
+import logging
+import sys
 
-from genutility.http import URLRequest
 from genutility.compat.contextlib import nullcontext
+from genutility.http import URLRequest
+
 
 def check_context(context):
 	with context as fr:

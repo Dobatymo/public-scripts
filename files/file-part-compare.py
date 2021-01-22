@@ -1,7 +1,8 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
 from genutility.file import iterfilelike
 from genutility.iter import iter_equal
+
 
 def compare_content(a, b, size, a_seek=0, b_seek=0):
 	with open(a, "rb") as fa, open(b, "rb") as fb:

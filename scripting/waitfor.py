@@ -1,10 +1,14 @@
-import logging, sys
+from __future__ import generator_stop
+
+import logging
+import sys
 from time import sleep
 
-from genutility.iter import range_count
 import requests
-from requests.exceptions import (ConnectionError, Timeout, HTTPError, TooManyRedirects,
-	URLRequired, MissingSchema, InvalidURL)
+from genutility.iter import range_count
+from requests.exceptions import (ConnectionError, HTTPError, InvalidURL,
+                                 MissingSchema, Timeout, TooManyRedirects,
+                                 URLRequired)
 
 __version__ = "0.1"
 

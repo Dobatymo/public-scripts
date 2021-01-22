@@ -1,9 +1,10 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
 import logging
 
 from genutility.fileformats.srt import transform
 from genutility.func import identity
+
 
 def sync_srt(infile, outfile, modify_times=identity, arg_times=(), modify_text=identity, arg_text=()):
 
@@ -16,9 +17,10 @@ def sync_srt(infile, outfile, modify_times=identity, arg_times=(), modify_text=i
 if __name__== "__main__":
 
 	from argparse import ArgumentParser
+
 	from genutility.args import existing_path, new_path
-	from genutility.stdio import errorquit
 	from genutility.filesystem import scandir_rec
+	from genutility.stdio import errorquit
 
 	parser = ArgumentParser(description="Apply simple transformations to srt subtitles files.")
 	parser.add_argument("inpath", type=existing_path, help="Input file or directory.")

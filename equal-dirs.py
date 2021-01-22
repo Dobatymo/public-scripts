@@ -1,10 +1,10 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
-from sys import exit
 from argparse import ArgumentParser
+from sys import exit
 
-from genutility.filesystem import equal_dirs
 from genutility.args import is_dir
+from genutility.filesystem import equal_dirs
 
 parser = ArgumentParser(description="Check if two directories are equal (contain the same files)")
 parser.add_argument("directory", type=is_dir, nargs=2, help="Directories to compare")

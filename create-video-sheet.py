@@ -1,9 +1,10 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
-import logging, platform
+import logging
+import platform
 from datetime import timedelta
+from os import fspath
 
-from genutility.compat.os import fspath
 from genutility.datetime import mdatetime
 from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
@@ -11,7 +12,6 @@ from genutility.iter import iter_except
 from genutility.math import byte2size_str
 from genutility.pillow import multiline_textsize
 from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
-
 from PIL import Image, ImageDraw, ImageFont
 
 if platform.system() == "Linux":
@@ -199,10 +199,10 @@ def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
 
 if __name__ == "__main__":
 
-	from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+	from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
+	from genutility.args import abs_path, existing_path, in_range, suffix
 	from genutility.compat.pathlib import Path
-	from genutility.args import existing_path, in_range, abs_path, suffix
 	from genutility.filesystem import fileextensions
 
 	parser = ArgumentParser(description="Create video sheet / grid of thumbnails from video file.", formatter_class=ArgumentDefaultsHelpFormatter)

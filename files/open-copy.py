@@ -1,11 +1,13 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
-import sys, os.path, shutil, subprocess, tempfile
-
-from genutility.twothree.filesystem import tofs
-from genutility.stdio import errorquit, waitquit
-
+import os.path
+import shutil
+import subprocess
+import sys
+import tempfile
 from argparse import ArgumentParser
+
+from genutility.stdio import errorquit, waitquit
 
 if __name__ == "__main__":
 
@@ -17,6 +19,6 @@ if __name__ == "__main__":
 		tmpName = "open-copy.tmp"
 		tmpPath = os.path.join(tempfile.gettempdir(), tempfile.gettempprefix() + tmpName)
 		shutil.copy(args.path, tmpPath)
-		errorquit(subprocess.call(tofs(tmpPath), shell=True))
+		errorquit(subprocess.call(tmpPath, shell=True))
 	except Exception as e:
 		waitquit(exception=e)

@@ -1,7 +1,9 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
 
-from future.moves.urllib.error import URLError
-import time, winsound, logging
+import logging
+import time
+import winsound
+from urllib.error import URLError
 
 from genutility.datetime import now
 from genutility.twitch import TwitchAPI

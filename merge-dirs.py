@@ -1,8 +1,13 @@
-import logging, os, errno
+from __future__ import generator_stop
 
-from genutility.compat import FileExistsError
-from genutility.compat.os import fspath, replace
+import errno
+import logging
+import os
+from os import fspath
+
+from genutility.compat.os import replace
 from genutility.exceptions import assert_choice
+
 
 def remove_empty_error_log(path, e):
 	if e.errno != errno.ENOTEMPTY:
@@ -65,6 +70,7 @@ def merge(src, dst, mode="no_move"):
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
+
 	from genutility.args import is_dir
 
 	parser = ArgumentParser()

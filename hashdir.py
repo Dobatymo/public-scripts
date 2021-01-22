@@ -1,11 +1,13 @@
-from __future__ import absolute_import, division, print_function, unicode_literals
+from __future__ import generator_stop
+
+from os import fspath
 
 from genutility.hash import hash_dir_str
-from genutility.compat.os import fspath
 
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
+
 	from genutility.args import is_dir
 	parser = ArgumentParser(description="calculate hash of all files in directory combined")
 	parser.add_argument("path", type=is_dir, help="input directory")

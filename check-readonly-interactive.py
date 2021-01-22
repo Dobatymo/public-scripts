@@ -1,8 +1,10 @@
-from __future__ import unicode_literals, print_function
+from __future__ import generator_stop
 
 import logging
-from genutility.filesystem import scandir_rec, is_writeable, make_writeable
+
+from genutility.filesystem import is_writeable, make_writeable, scandir_rec
 from genutility.stdio import confirm
+
 
 def do(paths, yes):
 	# type: (Iterable[str], bool) -> None
