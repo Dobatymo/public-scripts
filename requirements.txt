@@ -1,5 +1,5 @@
 bencode.py>=2.0.0 # bencode
-genutility
+genutility>=0.0.71
 mutagen
-pillow
+Pillow>=8.1.1
 #libtorrent
