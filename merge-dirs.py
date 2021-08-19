@@ -3,9 +3,8 @@ from __future__ import generator_stop
 import errno
 import logging
 import os
-from os import fspath
+from typing import Callable, Optional
 
-from genutility.compat.os import replace
 from genutility.exceptions import assert_choice
 
 
@@ -13,8 +12,7 @@ def remove_empty_error_log(path, e):
 	if e.errno != errno.ENOTEMPTY:
 		logging.warning("Failed to remove %s (%s)", path, e)
 
-def remove_empty_dirs(path, ignore_errors=False, onerror=None):
-	# type: (str, ) -> None
+def remove_empty_dirs(path: str, ignore_errors: bool=False, onerror: Optional[Callable]=None) -> None:
 
 	for dirpath, dirnames, filenames in os.walk(path, topdown=False):
 		if filenames:
@@ -53,11 +51,11 @@ def merge(src, dst, mode="no_move"):
 			target = dst / relpath
 			if target.exists():
 				if mode == "fail":
-					raise FileExistsError(fspath(path))
+					raise FileExistsError(os.fspath(path))
 				elif mode == "no_move":
 					pass
 				elif mode == "overwrite":
-					replace(fspath(path), fspath(target))
+					os.replace(os.fspath(path), os.fspath(target))
 				elif mode == "rename":
 					move_rename(path, target)
 			else:
@@ -65,7 +63,7 @@ def merge(src, dst, mode="no_move"):
 		else:
 			raise RuntimeError("Unhandled file: {}".format(path))
 
-	remove_empty_dirs(fspath(src), onerror=remove_empty_error_log)
+	remove_empty_dirs(os.fspath(src), onerror=remove_empty_error_log)
 
 if __name__ == "__main__":
 

@@ -7,9 +7,9 @@ logger = logging.getLogger(__name__)
 if __name__ == "__main__":
 
 	from argparse import ArgumentParser
+	from pathlib import Path
 
 	from genutility.args import between, existing_path, suffix
-	from genutility.compat.pathlib import Path
 	from genutility.filesystem import fileextensions
 	from genutility.videofile import NoGoodFrame, grab_pic
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
 
 	if args.inpath.is_file():
 		if args.outpath is None:
-			path_out = args.outpath.with_suffix(args.format)
+			path_out = args.inpath.with_suffix(args.format)
 		else:
 			if args.outpath.is_dir():
 				raise ValueError("outpath cannot be a directory if inpath is a file")

@@ -3,7 +3,7 @@ from __future__ import generator_stop
 import os
 import os.path
 
-from genutility.filesystem import scandir_rec
+from genutility.filesystem import PathType, scandir_rec
 from unidecode import unidecode
 
 

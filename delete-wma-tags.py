@@ -1,12 +1,13 @@
 from __future__ import generator_stop
 
+from typing import Iterable
+
 from genutility.filesystem import scandir_rec
 from genutility.stdio import waitcontinue
 from mutagen.asf import ASF
 
 
-def delete_tags_from_wma(path, tags):
-	# type: (str, Iterable[str]) -> bool
+def delete_tags_from_wma(path: str, tags: Iterable[str]) -> bool:
 
 	asf = ASF(path)
 	modified = False

@@ -57,7 +57,11 @@ class DirHasher:
 
 		with open(filepath, "r", encoding="utf-8") as fr:
 			for line in fr:
-				hash, path = re.match(r"([0-9a-fA-F]+) [ \*](.*)", line.rstrip()).groups()
+				m = re.match(r"([0-9a-fA-F]+) [ \*](.*)", line.rstrip())
+				if not m:
+					raise ValueError("Invalid file")
+
+				hash, path = m.groups()
 				filehash = bytes(bytearray.fromhex(hash))
 				hashes.append(filehash)
 				paths.append(path)

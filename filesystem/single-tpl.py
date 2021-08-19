@@ -1,5 +1,6 @@
 from __future__ import generator_stop
 
+from os import fspath
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -15,6 +16,7 @@ def main(inpath, tplpath, outpath, suffixes=frozenset(), prepend=""):
 	# type: (Path, Path, Path, FrozenSet[str], str) -> None
 
 	tpl = read_file(tplpath, "rt")
+	assert isinstance(tpl, str) # for mypy
 
 	paths = [path for path in inpath.iterdir() if path.suffix in suffixes]
 
@@ -25,8 +27,8 @@ def main(inpath, tplpath, outpath, suffixes=frozenset(), prepend=""):
 			fw.write(tpl.format(
 				filename=path.name,
 				efilename=esc(path.name),
-				path=path.path,
-				epath=esc(path.path),
+				path=fspath(path),
+				epath=esc(fspath(path)),
 				stem=path.parent / path.stem, # path without suffix
 				i=i
 			))
@@ -49,8 +51,9 @@ For example this can be used to create a shell script to include multiple video 
 	args = parser.parse_args()
 
 	if args.prependfile:
-		prepend = read_file(args.prependfile)
+		prepend = read_file(args.prependfile, "rt")
 	else:
 		prepend = args.prepend
 
+	assert isinstance(prepend, str) # for mypy
 	main(args.inpath, args.tplpath, args.outpath, frozenset(args.suffixes), prepend)

@@ -14,7 +14,7 @@ def check_context(context):
 			try:
 				url = URLRequest(link).get_redirect_url()
 				print(url)
-			except Exception as e:
+			except Exception:
 				logging.exception(link)
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import logging
 from argparse import ArgumentParser
 
 from bson import json_util
-from genutility.iter import Progress
+from genutility.iter import progress
 from genutility.json import json_lines
 from genutility.signal import HandleKeyboardInterrupt
 from pymongo import MongoClient
@@ -14,6 +14,7 @@ parser = ArgumentParser()
 parser.add_argument("connection_string", metavar="connection-string", help="MongoDB connection URI")
 parser.add_argument("--database", required=True, help="Database name")
 parser.add_argument("--collection", required=True, help="Collection name")
+parser.add_argument("--batch-size", type=int, default=10000, help="Batch size")
 parser.add_argument("--tls-ca-file", help="Specifies the location of a local .pem file that contains the root certificate chain from the Certificate Authority. This file is used to validate the certificate presented by the mongod/mongos instance.")
 parser.add_argument("--tls-certificate-key-file", help="A file containing the client certificate and private key. If you want to pass the certificate and private key as separate files, use the ssl_certfile and ssl_keyfile options instead. Implies tls=True. Defaults to None.")
 parser.add_argument("--tls-crl-file", help="A file containing a PEM or DER formatted certificate revocation list. Only supported by python 2.7.9+ (pypy 2.5.1+). Implies tls=True. Defaults to None.")
@@ -38,7 +39,8 @@ elif args.find is not None:
 
 	with json_lines.from_path(args.out, "xt") as jl:
 		Uninterrupted = HandleKeyboardInterrupt(True)
-		for doc in Progress(col.find(args.find)):
+		cursor = col.find(args.find).batch_size(args.batch_size)
+		for doc in progress(cursor):
 			with Uninterrupted:
 				try:
 					jl.write(doc, default=json_util.default)
