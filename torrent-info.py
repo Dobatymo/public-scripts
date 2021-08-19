@@ -1,7 +1,6 @@
 from __future__ import generator_stop
 
 import json
-import logging
 import sys
 from argparse import ArgumentParser
 from pathlib import Path

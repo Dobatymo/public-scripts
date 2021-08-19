@@ -1,11 +1,13 @@
-from __future__ import generator_stop
+from __future__ import annotations, generator_stop
 
 import logging
 import platform
 from datetime import timedelta
+from math import ceil
 from os import fspath
+from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type
 
-from genutility.datetime import mdatetime
+from genutility.filesystem import mdatetime
 from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
@@ -13,6 +15,10 @@ from genutility.math import byte2size_str
 from genutility.pillow import multiline_textsize
 from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
 from PIL import Image, ImageDraw, ImageFont
+
+if TYPE_CHECKING:
+	from fractions import Fraction
+	from pathlib import Path
 
 if platform.system() == "Linux":
 	DEFAULT_FONTFILE = "LiberationSans-Regular.ttf"
@@ -26,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 try:
 	cv2 = CvVideo.import_backend()
-	BackendCls = CvVideo
+	BackendCls: Type = CvVideo
 	logger.warning("Using cv2 backend")
 
 except ImportError:
@@ -45,7 +51,7 @@ class EveryX(BackendCls):
 		self.seconds = seconds
 
 	def calculate_offsets(self, time_base, duration):
-		# type: (Fraction, int) -> int
+		# type: (Fraction, int) -> Iterator[int]
 
 		steps = ceil(duration * time_base / self.seconds)
 		for i in range(0, steps):
@@ -53,8 +59,7 @@ class EveryX(BackendCls):
 
 class FramesX(BackendCls):
 
-	def __init__(self, path, frames, include_sides=False):
-		#type: (str, int) -> None
+	def __init__(self, path: str, frames: int, include_sides: bool=False) -> None:
 
 		""" if include_sides is True, the first and last frame will be included.
 		"""
@@ -65,8 +70,7 @@ class FramesX(BackendCls):
 		self.frames = frames
 		self.include_sides = include_sides
 
-	def calculate_offsets(self, time_base, duration):
-		# type: (Fraction, int) -> int
+	def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
 
 		duration_incl = duration - 1
 
@@ -80,8 +84,7 @@ class FramesX(BackendCls):
 		for i in range(part_offset, self.frames + part_offset):
 			yield int(i * duration_incl / parts)
 
-def create_header(path, meta, template=None):
-	# type: (Path, dict, Optional[str]) -> str
+def create_header(path: Path, meta: dict, template: Optional[str]=None) -> str:
 
 	filesize = path.stat().st_size
 
@@ -102,7 +105,7 @@ def create_header(path, meta, template=None):
 
 	return template.format(**fkwargs)
 
-def calc_sheet_size(cols, rows, thumb_width, thumb_height, pad_width, pad_height):
+def calc_sheet_size(cols: int, rows: int, thumb_width: int, thumb_height: int, pad_width: int, pad_height: int) -> Tuple[int, int]:
 
 	sheet_width = thumb_width * cols + pad_width * (cols + 1)
 	sheet_height = thumb_height * rows + pad_height * (rows + 1)

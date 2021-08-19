@@ -4,22 +4,18 @@ import logging
 from collections import defaultdict
 from hashlib import sha1
 
-import numpy as np
-from genutility.exceptions import ParseError
+from genutility.exceptions import ParseError, Skip
 from genutility.fileformats.jfif import hash_raw_jpeg
 from genutility.fileformats.png import hash_raw_png
 from genutility.filesystem import entrysuffix, fileextensions, scandir_rec
 from genutility.fingerprinting import phash_blockmean
-from genutility.hash import hash_file, sha1_hash_file
+from genutility.hash import hash_file
 from genutility.iter import progress
 from genutility.metrics import hamming_distance
 from genutility.metrictree import BKTree
 from metrohash import MetroHash128
 from PIL import Image
 
-
-class Skip(Exception):
-	pass
 
 def metrohash(path):
 	return hash_file(path, MetroHash128).digest()
@@ -227,18 +223,18 @@ if __name__ == "__main__":
 			for d in range(100):
 				groups = []
 
-				for group in tree.find_by_distance(d):
+				for hashgroup in tree.find_by_distance(d):
 					files = []
-					for hash in group:
+					for hash in hashgroup:
 						files.extend(map[hash])
 					groups.append(files)
 
 				if groups:
 					fw.write("Distance: {}\n".format(d))
-					for group in groups:
-						fw.write("{}\n".format(group))
+					for hashgroup in groups:
+						fw.write("{}\n".format(hashgroup))
 
 					fw.write("---\n")
 
 	elif args.audio:
-		parser.exit("Duplicate search for audio is no implemented yet")
+		parser.error("Duplicate search for audio is no implemented yet")

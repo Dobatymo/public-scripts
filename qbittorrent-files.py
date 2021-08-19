@@ -4,22 +4,18 @@ import logging
 import os.path
 from os import fspath
 from pathlib import Path
+from typing import Dict, Optional, Tuple
 
 from genutility.exceptions import NotFound
-from genutility.os import get_appdata_dir
 from genutility.torrent import read_torrent, read_torrent_info_dict, torrent_info_hash, write_torrent
 
 logger = logging.getLogger(__name__)
-
-class MoveFileError(OSError):
-	pass
 
 class QBittorrentMeta(object):
 
 	__slots__ = ("btpath", "map")
 
-	def __init__(self, path=None):
-		# type: (Optional[Path], ) -> None
+	def __init__(self, path: Optional[Path]=None) -> None:
 
 		self.btpath = path or Path(os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup"))
 		if not self.btpath.exists():
@@ -29,8 +25,7 @@ class QBittorrentMeta(object):
 
 		self.map = self.get_single_file_mappings(self.btpath)
 
-	def move_single_file_to(self, src, dst):
-		# type: (Path, Path) -> None
+	def move_single_file_to(self, src: Path, dst: Path) -> None:
 
 		if src.name != dst.name:
 			raise ValueError(f"Cannot change file name {src.name} -> {dst.name}. Only directories.")
@@ -42,8 +37,7 @@ class QBittorrentMeta(object):
 		self.set_fastresume_path(info_hash, fspath(dst.parent))
 		src.rename(dst)
 
-	def move_single_file(self, path, dry=True):
-		# type: (Path, bool) -> bool
+	def move_single_file(self, path: Path, dry: bool=True) -> bool:
 
 		""" Finds torrent which matches `path` and move file to the correct location.
 		"""
@@ -57,8 +51,7 @@ class QBittorrentMeta(object):
 			path.rename(torrentpath)
 			return True
 
-	def single_file_moved(self, path, dry=True):
-		# type: (Path, bool) -> bool
+	def single_file_moved(self, path: Path, dry: bool=True) -> bool:
 
 		""" Finds torrent which matches `path` and adjusts fastresume meta data.
 		"""
@@ -69,8 +62,7 @@ class QBittorrentMeta(object):
 		else:
 			return self.set_fastresume_path(info_hash, fspath(path.parent))
 
-	def path_to_info_hash(self, path):
-		# type: (Path, ) -> str
+	def path_to_info_hash(self, path: Path) -> str:
 
 		name = path.name
 		size = path.stat().st_size
@@ -80,8 +72,7 @@ class QBittorrentMeta(object):
 		except KeyError:
 			raise NotFound(f"Could not find infohash for name={name}, size={size}")
 
-	def read_fastresume_file(self, info_hash):
-		# type: (str, ) -> dict
+	def read_fastresume_file(self, info_hash: str) -> dict:
 
 		fastresumepath = self.btpath / f"{info_hash}.fastresume"
 		try:
@@ -94,18 +85,17 @@ class QBittorrentMeta(object):
 
 		return bb
 
-	def write_fastresume_file(self, bb, info_hash):
+	def write_fastresume_file(self, bb: dict, info_hash: str) -> None:
+
 		fastresumepath = self.btpath / f"{info_hash}.fastresume"
 		write_torrent(bb, fastresumepath)
 
-	def get_fastresume_path(self, info_hash):
-		# type: (str, ) -> str
+	def get_fastresume_path(self, info_hash: str) -> str:
 
 		bb = self.read_fastresume_file(info_hash)
 		return bb["save_path"]
 
-	def set_fastresume_path(self, info_hash, torrentpath):
-		# type: (str, str) -> bool
+	def set_fastresume_path(self, info_hash: str, torrentpath: str) -> bool:
 
 		bb = self.read_fastresume_file(info_hash)
 
@@ -114,12 +104,13 @@ class QBittorrentMeta(object):
 		else:
 			bb["qBt-savePath"] = torrentpath
 			bb["save_path"] = torrentpath
-			write_fastresume_file(bb, info_hash)
+			self.write_fastresume_file(bb, info_hash)
 			return True
 
 	@staticmethod
-	def get_single_file_mappings(path):
-		ret = {} # type: Dict[Tuple[str, int], str]
+	def get_single_file_mappings(path: Path):
+
+		ret: Dict[Tuple[str, int], str] = {}
 
 		for torrentfile in path.glob("*.torrent"):
 			info = read_torrent_info_dict(torrentfile)
@@ -140,8 +131,7 @@ class QBittorrentMeta(object):
 
 		return ret
 
-def replace_directory(dirpath, from_s, to_s):
-	# type: (Path, str, str) -> None
+def replace_directory(dirpath: Path, from_s: str, to_s: str) -> None:
 
 	for filepath in dirpath.glob("*.fastresume"):
 		bb = read_torrent(filepath)

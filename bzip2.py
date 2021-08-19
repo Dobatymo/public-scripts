@@ -1,6 +1,7 @@
 from __future__ import generator_stop
 
 import argparse
+import sys
 
 from genutility.compat.contextlib import nullcontext
 from genutility.file import copen, copyfilelike

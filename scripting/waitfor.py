@@ -6,8 +6,7 @@ from time import sleep
 
 import requests
 from genutility.iter import range_count
-from requests.exceptions import (ConnectionError, HTTPError, InvalidURL, MissingSchema, Timeout, TooManyRedirects,
-                                 URLRequired)
+from requests.exceptions import ConnectionError, HTTPError, InvalidURL, MissingSchema, Timeout, URLRequired
 
 __version__ = "0.1"
 

@@ -1,9 +1,11 @@
 from __future__ import generator_stop
 
-from genutility.iter import randbytes
+from pathlib import Path
+
+from genutility.rand import randbytes
 
 
-def create_random_file(filename, size, buffer_size=1024):
+def create_random_file(filename: Path, size: int, buffer_size: int=1024) -> None:
 	remaining = size
 	with open(filename, "xb") as fp:
 		while remaining > 0:
@@ -17,7 +19,7 @@ if __name__ == "__main__":
 	from argparse import ArgumentParser
 
 	parser = ArgumentParser()
-	parser.add_argument("--path", default="random.bin")
+	parser.add_argument("--path", default="random.bin", type=Path)
 	parser.add_argument("--size", default=1024**2, type=int)
 	args = parser.parse_args()
 
