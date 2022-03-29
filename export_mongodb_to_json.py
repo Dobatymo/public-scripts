@@ -13,7 +13,12 @@ from pymongo import MongoClient
 
 
 def main(args):
-    client = MongoClient(args.connection_string, tlsCAFile=args.tls_ca_file, tlsCertificateKeyFile=args.tls_certificate_key_file, tlsCRLFile=args.tls_crl_file)
+    client = MongoClient(
+        args.connection_string,
+        tlsCAFile=args.tls_ca_file,
+        tlsCertificateKeyFile=args.tls_certificate_key_file,
+        tlsCRLFile=args.tls_crl_file,
+    )
 
     col = client[args.database][args.collection]
 
@@ -43,15 +48,25 @@ def main(args):
                             logging.warning("Failed to serialize %s", doc)
                             raise
 
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("connection_string", metavar="connection-string", help="MongoDB connection URI")
     parser.add_argument("--database", required=True, help="Database name")
     parser.add_argument("--collection", required=True, help="Collection name")
     parser.add_argument("--batch-size", type=int, default=10000, help="Batch size")
-    parser.add_argument("--tls-ca-file", help="Specifies the location of a local .pem file that contains the root certificate chain from the Certificate Authority. This file is used to validate the certificate presented by the mongod/mongos instance.")
-    parser.add_argument("--tls-certificate-key-file", help="A file containing the client certificate and private key. If you want to pass the certificate and private key as separate files, use the ssl_certfile and ssl_keyfile options instead. Implies tls=True. Defaults to None.")
-    parser.add_argument("--tls-crl-file", help="A file containing a PEM or DER formatted certificate revocation list. Only supported by python 2.7.9+ (pypy 2.5.1+). Implies tls=True. Defaults to None.")
+    parser.add_argument(
+        "--tls-ca-file",
+        help="Specifies the location of a local .pem file that contains the root certificate chain from the Certificate Authority. This file is used to validate the certificate presented by the mongod/mongos instance.",
+    )
+    parser.add_argument(
+        "--tls-certificate-key-file",
+        help="A file containing the client certificate and private key. If you want to pass the certificate and private key as separate files, use the ssl_certfile and ssl_keyfile options instead. Implies tls=True. Defaults to None.",
+    )
+    parser.add_argument(
+        "--tls-crl-file",
+        help="A file containing a PEM or DER formatted certificate revocation list. Only supported by python 2.7.9+ (pypy 2.5.1+). Implies tls=True. Defaults to None.",
+    )
     parser.add_argument("--out", help="JsonLines output file")
 
     group = parser.add_mutually_exclusive_group(required=True)

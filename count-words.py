@@ -11,6 +11,6 @@ args = parser.parse_args()
 
 num = count_words_in_file(args.path)
 if args.raw:
-	print(num)
+    print(num)
 else:
-	print("{} contains {} words".format(args.path, num))
+    print(f"{args.path} contains {num} words")

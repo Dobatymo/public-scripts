@@ -12,8 +12,8 @@ args = parser.parse_args()
 
 result = equal_dirs(*args.directory)
 if result is True:
-	print("The directories are equal")
-	exit(0)
+    print("The directories are equal")
+    exit(0)
 else:
-	print("{} different for {} and {}".format(*result))
-	exit(1)
+    print("{} different for {} and {}".format(*result))
+    exit(1)
