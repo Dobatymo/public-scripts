@@ -5,6 +5,7 @@ import platform
 from datetime import timedelta
 from math import ceil
 from os import fspath
+from pathlib import Path
 from typing import TYPE_CHECKING, Iterator, Optional, Tuple, Type
 
 from genutility.filesystem import mdatetime
@@ -18,7 +19,6 @@ from PIL import Image, ImageDraw, ImageFont
 
 if TYPE_CHECKING:
 	from fractions import Fraction
-	from pathlib import Path
 
 if platform.system() == "Linux":
 	DEFAULT_FONTFILE = "LiberationSans-Regular.ttf"
@@ -205,7 +205,6 @@ if __name__ == "__main__":
 	from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
 	from genutility.args import abs_path, existing_path, in_range, suffix
-	from genutility.compat.pathlib import Path
 	from genutility.filesystem import fileextensions
 
 	parser = ArgumentParser(description="Create video sheet / grid of thumbnails from video file.", formatter_class=ArgumentDefaultsHelpFormatter)

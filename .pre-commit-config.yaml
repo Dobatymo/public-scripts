@@ -29,7 +29,7 @@ repos:
         args: ["--install-types", "--non-interactive"]
         additional_dependencies:
           - bencode.py==4.0.0
-          - genutility==0.0.74
+          - genutility==0.0.75
           - metrohash-python==1.1.3.2
           - mutagen==1.45.1
           - Pillow>=8.1.1
