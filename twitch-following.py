@@ -10,28 +10,29 @@ from genutility.twitch import TwitchAPI
 
 if __name__ == "__main__":
 
-	from argparse import ArgumentParser
-	parser = ArgumentParser()
-	parser.add_argument("username")
-	parser.add_argument("clientid")
-	parser.add_argument("--interval", type=int, default=120)
-	args = parser.parse_args()
+    from argparse import ArgumentParser
 
-	watcher = TwitchAPI(args.clientid, username=args.username).watcher()
+    parser = ArgumentParser()
+    parser.add_argument("username")
+    parser.add_argument("clientid")
+    parser.add_argument("--interval", type=int, default=120)
+    args = parser.parse_args()
 
-	def notify_started(user_id, name, title):
-		print("{} started streaming '{}' at {}".format(name, title, now().isoformat(" ")))
-		winsound.Beep(880, 1000) #frequency, duration
+    watcher = TwitchAPI(args.clientid, username=args.username).watcher()
 
-	def notify_stopped(user_id, name):
-		print("{} stopped streaming at {}".format(name, now().isoformat(" ")))
+    def notify_started(user_id, name, title):
+        print("{} started streaming '{}' at {}".format(name, title, now().isoformat(" ")))
+        winsound.Beep(880, 1000)  # frequency, duration
 
-	while True:
-		try:
-			watcher.watch(notify_started, notify_stopped)
-		except URLError:
-			logging.warning("Internet error")
-		except ValueError:
-			logging.warning("Wrong data")
+    def notify_stopped(user_id, name):
+        print("{} stopped streaming at {}".format(name, now().isoformat(" ")))
 
-		time.sleep(args.interval)
+    while True:
+        try:
+            watcher.watch(notify_started, notify_stopped)
+        except URLError:
+            logging.warning("Internet error")
+        except ValueError:
+            logging.warning("Wrong data")
+
+        time.sleep(args.interval)

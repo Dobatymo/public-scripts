@@ -12,52 +12,69 @@ from genutility.filesystem import entrysuffix, iter_links, realpath_win, scandir
 
 def print_error(entry: DirEntry, exc) -> None:
 
-	if isinstance(exc, PermissionError):
-		logging.warning("PermissionError in: %s (%s)", entry.path, exc)
-	else:
-		logging.exception("Error in: %s", entry.path)
+    if isinstance(exc, PermissionError):
+        logging.warning("PermissionError in: %s (%s)", entry.path, exc)
+    else:
+        logging.exception("Error in: %s", entry.path)
+
 
 def is_sparse_or_compressed(entry: DirEntry) -> bool:
 
-	return win32file.GetCompressedFileSize(entry.path) < entry.stat().st_size
+    return win32file.GetCompressedFileSize(entry.path) < entry.stat().st_size
 
-def print_symlinks_sparse(path: str, ignore_exts: Set[str]=set()) -> None:
-	for entry in scandir_rec(path, files=True, dirs=True, others=True, rec=True, follow_symlinks=False, errorfunc=print_error):
-		if entry.is_symlink():
-			try:
-				if os.path.exists(realpath_win(entry.path)):
-					print("Valid: {}".format(entry.path))
-				else:
-					print("Invalid: {}".format(entry.path))
-			except Exception:
-				logging.exception("Error: %s", entry.path)
 
-		if entry.is_file():
-			ext = entrysuffix(entry)
-			try:
-				if ext not in ignore_exts and is_sparse_or_compressed(entry):
-					print("Sparse or compressed: {}".format(entry.path))
-			except pywintypes.error:
-				logging.exception("Error reading filesize: %s", entry.path)
+def print_symlinks_sparse(path: str, ignore_exts: Set[str] = set()) -> None:
+    for entry in scandir_rec(
+        path,
+        files=True,
+        dirs=True,
+        others=True,
+        rec=True,
+        follow_symlinks=False,
+        errorfunc=print_error,
+    ):
+        if entry.is_symlink():
+            try:
+                if os.path.exists(realpath_win(entry.path)):
+                    print(f"Valid: {entry.path}")
+                else:
+                    print(f"Invalid: {entry.path}")
+            except Exception:
+                logging.exception("Error: %s", entry.path)
+
+        if entry.is_file():
+            ext = entrysuffix(entry)
+            try:
+                if ext not in ignore_exts and is_sparse_or_compressed(entry):
+                    print(f"Sparse or compressed: {entry.path}")
+            except pywintypes.error:
+                logging.exception("Error reading filesize: %s", entry.path)
+
 
 def print_links(path) -> None:
-	for p in iter_links(path):
-		print(p)
+    for p in iter_links(path):
+        print(p)
+
 
 if __name__ == "__main__":
-	from argparse import ArgumentParser
-	logging.basicConfig(level=logging.DEBUG)
+    from argparse import ArgumentParser
 
-	DEFAULT_IGNORE = [".!ut", ".!qB"]
+    logging.basicConfig(level=logging.DEBUG)
 
-	parser = ArgumentParser()
-	parser.add_argument("path", help="Input path to search recursively.")
-	parser.add_argument("--ignore-extensions", default=DEFAULT_IGNORE, help="File extensions to ignore for sparse checks.")
-	args = parser.parse_args()
+    DEFAULT_IGNORE = [".!ut", ".!qB"]
 
-	print("Ignoring extensions:", args.ignore_extensions)
-	print("Symlinks or sparse")
-	print_symlinks_sparse(args.path, set(args.ignore_extensions))
+    parser = ArgumentParser()
+    parser.add_argument("path", help="Input path to search recursively.")
+    parser.add_argument(
+        "--ignore-extensions",
+        default=DEFAULT_IGNORE,
+        help="File extensions to ignore for sparse checks.",
+    )
+    args = parser.parse_args()
 
-	print("Symlinks or junctions")
-	print_links(args.path)
+    print("Ignoring extensions:", args.ignore_extensions)
+    print("Symlinks or sparse")
+    print_symlinks_sparse(args.path, set(args.ignore_extensions))
+
+    print("Symlinks or junctions")
+    print_links(args.path)
