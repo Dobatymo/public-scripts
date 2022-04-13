@@ -75,7 +75,7 @@ class QBittorrentMeta:
 
         fastresumepath = self.btpath / f"{info_hash}.fastresume"
         try:
-            bb = read_torrent(fastresumepath)
+            bb = read_torrent(fspath(fastresumepath))
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find fastresume file: {fastresumepath}")
 
@@ -87,7 +87,7 @@ class QBittorrentMeta:
     def write_fastresume_file(self, bb: dict, info_hash: str) -> None:
 
         fastresumepath = self.btpath / f"{info_hash}.fastresume"
-        write_torrent(bb, fastresumepath)
+        write_torrent(bb, fspath(fastresumepath))
 
     def get_fastresume_path(self, info_hash: str) -> str:
 
@@ -112,7 +112,7 @@ class QBittorrentMeta:
         ret: Dict[Tuple[str, int], str] = {}
 
         for torrentfile in path.glob("*.torrent"):
-            info = read_torrent_info_dict(torrentfile)
+            info = read_torrent_info_dict(fspath(torrentfile))
             info_hash = torrent_info_hash(info)
             if info_hash != torrentfile.stem:
                 raise AssertionError(
@@ -136,7 +136,7 @@ class QBittorrentMeta:
 def replace_directory(dirpath: Path, from_s: str, to_s: str) -> None:
 
     for filepath in dirpath.glob("*.fastresume"):
-        bb = read_torrent(filepath)
+        bb = read_torrent(fspath(filepath))
 
         try:
             save_a = bb["qBt-savePath"]

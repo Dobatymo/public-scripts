@@ -2,7 +2,6 @@ from __future__ import generator_stop
 
 import json
 import logging
-from argparse import ArgumentParser
 
 from bson import json_util
 from genutility.args import json_file
@@ -50,6 +49,8 @@ def main(args):
 
 
 if __name__ == "__main__":
+    from argparse import ArgumentParser
+
     parser = ArgumentParser()
     parser.add_argument("connection_string", metavar="connection-string", help="MongoDB connection URI")
     parser.add_argument("--database", required=True, help="Database name")
