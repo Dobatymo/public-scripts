@@ -17,16 +17,14 @@ if TYPE_CHECKING:
 
 
 class DirHasher:
-    def __init__(self, paths, hashes, toppath=None):
-        # type: (Sequence[str], Iterable[bytes], Optional[str]) -> None
+    def __init__(self, paths: Sequence[str], hashes: Iterable[bytes], toppath: Optional[str] = None) -> None:
 
         self.paths = paths
         self.hashes = hashes
         self._toppath = toppath
 
     @property
-    def toppath(self):
-        # type: () -> str
+    def toppath(self) -> str:
 
         if self._toppath is None:
             self._toppath = os.path.commonprefix(self.paths)
@@ -34,8 +32,7 @@ class DirHasher:
         return self._toppath
 
     @classmethod
-    def from_fs(cls, dirpath, hashcls=hashlib.sha1):
-        # type: (PathType, HashCls) -> DirHasher
+    def from_fs(cls, dirpath: PathType, hashcls: HashCls = hashlib.sha1) -> "DirHasher":
 
         """Creates a DirHasher instance for a filesystem folder."""
 
@@ -45,13 +42,12 @@ class DirHasher:
         return cls(paths, CachedIterable(hashes), fspath(dirpath))
 
     @classmethod
-    def from_file(cls, filepath):
-        # type: (PathType, ) -> DirHasher
+    def from_file(cls, filepath: PathType) -> "DirHasher":
 
         """Reads a file ins md5sum or sha1sum format and creates a DirHasher instance."""
 
-        hashes = []  # type: List[bytes]
-        paths = []  # type: List[str]
+        hashes: List[bytes] = []
+        paths: List[str] = []
 
         with open(filepath, encoding="utf-8") as fr:
             for line in fr:
@@ -70,8 +66,9 @@ class DirHasher:
     def format_line(hexdigest, path, end="\n"):
         return f"{hexdigest} *{path}{end}"
 
-    def to_stream(self, stream, include_total=True, hashcls=hashlib.sha1, include_names=True):
-        # type: (IO[str], bool, HashCls, bool) -> None
+    def to_stream(
+        self, stream: IO[str], include_total: bool = True, hashcls: HashCls = hashlib.sha1, include_names: bool = True
+    ) -> None:
 
         for filehash, path in zip(self.hashes, self.paths):
             stream.write(self.format_line(filehash.hex(), path))
@@ -81,15 +78,13 @@ class DirHasher:
             line = self.format_line(m.hexdigest(), self.toppath)
             stream.write(line)
 
-    def total_line(self, hashcls=hashlib.sha1, include_names=True):
-        # type: (HashCls, bool) -> str
+    def total_line(self, hashcls: HashCls = hashlib.sha1, include_names: bool = True) -> str:
 
         m = self.total(hashcls, include_names)
         line = self.format_line(m.hexdigest(), self.toppath, end="")
         return line
 
-    def total(self, hashcls=hashlib.sha1, include_names=True):
-        # type: (HashCls, bool) -> Hashobj
+    def total(self, hashcls: HashCls = hashlib.sha1, include_names: bool = True) -> Hashobj:
 
         if isinstance(hashcls, str):
             m = hashlib.new(hashcls)

@@ -15,5 +15,5 @@ if __name__ == "__main__":
     outfile = args.outfile or append_to_filename(args.infile, "converted")
 
     with open(args.infile) as fr:
-        with open(args.outfile, "xt") as fw:
+        with open(args.outfile, "x") as fw:
             fw.write(fr.read())

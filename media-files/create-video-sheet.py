@@ -42,16 +42,14 @@ except ImportError:
 
 
 class EveryX(BackendCls):
-    def __init__(self, path, seconds):
-        # type: (str, float) -> None
+    def __init__(self, path: str, seconds: float) -> None:
 
         BackendCls.__init__(self, path)
         if seconds <= 0.0:
             raise ValueError("seconds must be larger than 0")
         self.seconds = seconds
 
-    def calculate_offsets(self, time_base, duration):
-        # type: (Fraction, int) -> Iterator[int]
+    def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
 
         steps = ceil(duration * time_base / self.seconds)
         for i in range(0, steps):
@@ -200,6 +198,9 @@ def create_sheet(
         header_width, header_height = 0, 0
 
     grid = Image.new("RGB", (sheet_width, sheet_height + header_height), background)
+
+    if header_width > grid.width:
+        logger.info("Header text will be cut off")
 
     if headertext:
         d = ImageDraw.Draw(grid)

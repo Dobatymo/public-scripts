@@ -1,20 +1,16 @@
 from __future__ import generator_stop
 
 import logging
+import os
+from pathlib import Path
 from shutil import copystat
-from typing import TYPE_CHECKING
 
-from genutility.compat.os import replace
 from PIL import Image, UnidentifiedImageError
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
 
-def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
-    # type: (Path, bool, bool, bool) -> None
+def convert(inpath: Path, bitmap: bool = True, tiff: bool = True, remove_originals: bool = False) -> None:
 
     """Recursively within `inpath`, converts bitmap files to PNG
     and uncompressed tiff files to losslessly compressed ones.
@@ -67,7 +63,7 @@ def convert(inpath, bitmap=True, tiff=True, remove_originals=False):
 
                     if remove_originals:
                         del im
-                        replace(newfile, path)
+                        os.replace(newfile, path)
 
                 elif im.info["compression"] in {
                     "tiff_adobe_deflate",

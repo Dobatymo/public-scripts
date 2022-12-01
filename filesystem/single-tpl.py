@@ -14,15 +14,14 @@ def esc(s):
     return s.replace("\\", "\\\\")
 
 
-def main(inpath, tplpath, outpath, suffixes=frozenset(), prepend=""):
-    # type: (Path, Path, Path, FrozenSet[str], str) -> None
+def main(inpath: Path, tplpath: Path, outpath: Path, suffixes: FrozenSet[str] = frozenset(), prepend: str = "") -> None:
 
     tpl = read_file(tplpath, "rt")
     assert isinstance(tpl, str)  # for mypy
 
     paths = [path for path in inpath.iterdir() if path.suffix in suffixes]
 
-    with open(outpath, "wt") as fw:
+    with open(outpath, "w") as fw:
         fw.write(prepend.format(num=len(paths)))
 
         for i, path in enumerate(paths):

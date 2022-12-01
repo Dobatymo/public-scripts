@@ -5,9 +5,8 @@ import os.path
 from os import DirEntry
 from typing import Set
 
-import pywintypes
-import win32file
 from genutility.filesystem import entrysuffix, iter_links, realpath_win, scandir_rec
+from genutility.win.file import GetCompressedFileSize
 
 
 def print_error(entry: DirEntry, exc) -> None:
@@ -19,8 +18,7 @@ def print_error(entry: DirEntry, exc) -> None:
 
 
 def is_sparse_or_compressed(entry: DirEntry) -> bool:
-
-    return win32file.GetCompressedFileSize(entry.path) < entry.stat().st_size
+    return GetCompressedFileSize(entry.path) < entry.stat().st_size
 
 
 def print_symlinks_sparse(path: str, ignore_exts: Set[str] = set()) -> None:
@@ -47,8 +45,8 @@ def print_symlinks_sparse(path: str, ignore_exts: Set[str] = set()) -> None:
             try:
                 if ext not in ignore_exts and is_sparse_or_compressed(entry):
                     print(f"Sparse or compressed: {entry.path}")
-            except pywintypes.error:
-                logging.exception("Error reading filesize: %s", entry.path)
+            except OSError as e:
+                logging.exception("Error reading filesize of <%s>: %s", entry.path, e)
 
 
 def print_links(path) -> None:

@@ -1,11 +1,11 @@
-from __future__ import annotations, generator_stop
+from __future__ import generator_stop
 
 import logging
 from functools import partial
 from math import ceil, log2
 from os import fspath
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Optional
 
 import libtorrent
 
@@ -16,11 +16,11 @@ def create_torrent(
     path: Path,
     trackers: Iterable[str] = (),
     private: bool = True,
-    pieces: int | None = None,
-    piece_size: int | None = None,
-    source: str | None = None,
-    predicate: Callable | None = None,
-    progress: Callable | None = None,
+    pieces: Optional[int] = None,
+    piece_size: Optional[int] = None,
+    source: Optional[str] = None,
+    predicate: Optional[Callable] = None,
+    progress: Optional[Callable] = None,
     min_piece_exp: int = 14,
     max_piece_exp: int = 24,
 ) -> bytes:

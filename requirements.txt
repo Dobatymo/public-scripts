@@ -1,11 +1,12 @@
 bencode.py>=2.0.0 # bencode
-genutility>=0.0.82
+genutility[image,pillow,videofile]>=0.0.97
+libtorrent
 metrohash-python
 mutagen
 Pillow>=9.1.0
 pyexiv2
 pymongo
 pypyodbc
-#libtorrent
 requests
 tqdm
+win32api

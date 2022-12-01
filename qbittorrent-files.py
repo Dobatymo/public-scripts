@@ -152,8 +152,7 @@ def replace_directory(dirpath: Path, from_s: str, to_s: str) -> None:
         write_torrent(bb, filepath)
 
 
-def match_directory(path, move_files=False, recursive=True):
-    # type: (Path, bool, bool) -> None
+def match_directory(path: Path, move_files: bool = False, recursive: bool = True) -> None:
 
     """Scans directory `path` for files known to QBittorrent and either adjusts the
     fastresume files to have the correct path, or moves the files to the path specified

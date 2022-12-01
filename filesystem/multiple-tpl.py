@@ -14,14 +14,13 @@ def esc(s):
     return s.replace("\\", "\\\\")
 
 
-def main(inpath, tplpath, outpath, outsuffix, suffixes=frozenset()):
-    # type: (Path, Path, Path, str, FrozenSet[str]) -> None
+def main(inpath: Path, tplpath: Path, outpath: Path, outsuffix: str, suffixes: FrozenSet[str] = frozenset()) -> None:
 
     tpl = read_file(tplpath, "rt")
     assert isinstance(tpl, str)  # for mypy
 
     for i, path in enumerate(path for path in inpath.iterdir() if path.suffix in suffixes):
-        with open(outpath / path.with_suffix(outsuffix).name, "wt") as fw:
+        with open(outpath / path.with_suffix(outsuffix).name, "w") as fw:
             fw.write(
                 tpl.format(
                     filename=path.name,

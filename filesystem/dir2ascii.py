@@ -7,8 +7,7 @@ from genutility.filesystem import PathType, scandir_rec
 from unidecode import unidecode
 
 
-def convert_filenames_to_ascii(path, follow_symlinks=False, rec=False):
-    # type: (PathType, bool, bool) -> None
+def convert_filenames_to_ascii(path: PathType, follow_symlinks: bool = False, rec: bool = False) -> None:
     """convert all files in `path` to a ascii representation using unidecode"""
 
     for entry in scandir_rec(path, files=True, dirs=False, rec=rec, follow_symlinks=follow_symlinks):
