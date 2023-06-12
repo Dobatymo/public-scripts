@@ -9,7 +9,6 @@ from argparse import ArgumentParser
 from genutility.stdio import errorquit, waitquit
 
 if __name__ == "__main__":
-
     parser = ArgumentParser()
     parser.add_argument("path")
     args = parser.parse_args()

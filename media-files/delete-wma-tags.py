@@ -8,7 +8,6 @@ from mutagen.asf import ASF
 
 
 def delete_tags_from_wma(path: str, tags: Iterable[str]) -> bool:
-
     asf = ASF(path)
     modified = False
 
@@ -26,7 +25,6 @@ def delete_tags_from_wma(path: str, tags: Iterable[str]) -> bool:
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     from genutility.args import is_dir

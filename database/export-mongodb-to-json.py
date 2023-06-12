@@ -24,7 +24,6 @@ def main(args):
     if args.count:
         print(col.count())
     elif args.find is not None or args.agg is not None:
-
         if not args.out:
             parser.error("--out must be given for --find or --agg")
 

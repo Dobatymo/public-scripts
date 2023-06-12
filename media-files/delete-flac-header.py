@@ -13,7 +13,6 @@ def modify_header(filetags: FileType, mapping: dict) -> bool:
     modified = False
 
     for k, v in mapping.items():
-
         if v:
             try:
                 if filetags[k] == v:
@@ -32,10 +31,8 @@ def modify_header(filetags: FileType, mapping: dict) -> bool:
 
 
 def delete_flac_tags(directory: Path, mapping: Dict[str, Optional[str]]) -> None:
-
     for path in Path(directory).rglob("*.flac"):
         if path.is_file():
-
             try:
                 filetags = FLAC(fspath(path))
                 if modify_header(filetags, mapping):

@@ -10,7 +10,6 @@ from genutility.win.file import GetCompressedFileSize
 
 
 def print_error(entry: DirEntry, exc) -> None:
-
     if isinstance(exc, PermissionError):
         logging.warning("PermissionError in: %s (%s)", entry.path, exc)
     else:

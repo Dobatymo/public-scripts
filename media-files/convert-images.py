@@ -11,15 +11,12 @@ logger = logging.getLogger(__name__)
 
 
 def convert(inpath: Path, bitmap: bool = True, tiff: bool = True, remove_originals: bool = False) -> None:
-
     """Recursively within `inpath`, converts bitmap files to PNG
     and uncompressed tiff files to losslessly compressed ones.
     """
 
     for path in inpath.rglob("*"):
-
         if bitmap and path.suffix in {".bmp"}:
-
             pngfile = path.with_suffix(".png")
             if not pngfile.exists():
                 try:
@@ -33,7 +30,6 @@ def convert(inpath: Path, bitmap: bool = True, tiff: bool = True, remove_origina
                     logger.warning("%s", e)
 
         if tiff and path.suffix in {".tif", ".tiff"}:
-
             newfile = path.with_suffix(".new" + path.suffix)
             if not newfile.exists():
                 im = Image.open(path)
@@ -95,7 +91,6 @@ def convert(inpath: Path, bitmap: bool = True, tiff: bool = True, remove_origina
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     from genutility.args import is_dir

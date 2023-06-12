@@ -24,7 +24,6 @@ def create_torrent(
     min_piece_exp: int = 14,
     max_piece_exp: int = 24,
 ) -> bytes:
-
     """
     min_piece_exp: default 16k
     max_piece_exp: default 16M
@@ -81,7 +80,6 @@ def create_torrent(
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     from genutility.args import existing_path, future_file

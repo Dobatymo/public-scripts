@@ -15,7 +15,6 @@ def esc(s):
 
 
 def main(inpath: Path, tplpath: Path, outpath: Path, suffixes: FrozenSet[str] = frozenset(), prepend: str = "") -> None:
-
     tpl = read_file(tplpath, "rt")
     assert isinstance(tpl, str)  # for mypy
 

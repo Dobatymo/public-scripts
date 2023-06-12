@@ -16,7 +16,6 @@ def create_random_file(filename: Path, size: int, buffer_size: int = 1024) -> No
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     parser = ArgumentParser()

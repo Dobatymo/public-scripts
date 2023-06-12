@@ -43,14 +43,12 @@ except ImportError:
 
 class EveryX(BackendCls):
     def __init__(self, path: str, seconds: float) -> None:
-
         BackendCls.__init__(self, path)
         if seconds <= 0.0:
             raise ValueError("seconds must be larger than 0")
         self.seconds = seconds
 
     def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
-
         steps = ceil(duration * time_base / self.seconds)
         for i in range(0, steps):
             yield int(i * self.seconds / time_base)
@@ -58,7 +56,6 @@ class EveryX(BackendCls):
 
 class FramesX(BackendCls):
     def __init__(self, path: str, frames: int, include_sides: bool = False) -> None:
-
         """if include_sides is True, the first and last frame will be included."""
 
         BackendCls.__init__(self, path)
@@ -68,7 +65,6 @@ class FramesX(BackendCls):
         self.include_sides = include_sides
 
     def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
-
         duration_incl = duration - 1
 
         if self.include_sides:
@@ -83,7 +79,6 @@ class FramesX(BackendCls):
 
 
 def create_header(path: Path, meta: dict, template: str | None = None) -> str:
-
     filesize = path.stat().st_size
 
     template = template or DEFAULT_TEMPLATE
@@ -101,7 +96,7 @@ def create_header(path: Path, meta: dict, template: str | None = None) -> str:
         "dar": meta["display_aspect_ratio"],
     }
 
-    return template.format(**fkwargs)
+    return template.format_map(fkwargs)
 
 
 def calc_sheet_size(
@@ -112,7 +107,6 @@ def calc_sheet_size(
     pad_width: int,
     pad_height: int,
 ) -> tuple[int, int]:
-
     sheet_width = thumb_width * cols + pad_width * (cols + 1)
     sheet_height = thumb_height * rows + pad_height * (rows + 1)
 
@@ -133,21 +127,19 @@ def _create_sheet(
     y_offset=0,
     timestamp=True,
 ):
-
     d = ImageDraw.Draw(grid)
 
     def no_good_frame(iterator, e):
         logger.warning("Video file was not processed completely: %s", e)
 
     for i, (frametime, frame) in enumerate(iter_except(frames, {NoGoodFrame: no_good_frame}, True)):
-
         if isinstance(frame, Exception):
             logger.warning("Skipping frame %s (%s)", frametime, frame)
             continue
 
         image = Image.fromarray(frame)
 
-        thumbnail = image.resize((thumb_width, thumb_height), Image.BICUBIC)  # or Image.LANCZOS?
+        thumbnail = image.resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
 
         td = timedelta(seconds=frametime)
 
@@ -183,7 +175,6 @@ def create_sheet(
     headertext=None,
     spacing=4,
 ):
-
     if not rows:
         raise ValueError("Variable row count not implement yet")
 
@@ -223,7 +214,6 @@ def create_sheet(
 
 
 def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
-
     if rows:
         context = FramesX(inpath, cols * rows)
     elif seconds:
@@ -263,7 +253,6 @@ def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
     from genutility.args import abs_path, existing_path, in_range, suffix
@@ -396,7 +385,6 @@ if __name__ == "__main__":
         main(args.inpath, outpath, cols, rows, seconds, argsdict, args.dry)
 
     elif args.inpath.is_dir():
-
         video_suffixes = {"." + ext for ext in fileextensions.video}
 
         if args.recursive:

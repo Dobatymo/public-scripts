@@ -9,7 +9,6 @@ from genutility.datetime import now
 from genutility.twitch import TwitchAPI
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     parser = ArgumentParser()

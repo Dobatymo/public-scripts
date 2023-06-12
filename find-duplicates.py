@@ -12,7 +12,7 @@ from genutility.fingerprinting import phash_blockmean
 from genutility.hash import hash_file
 from genutility.iter import progress
 from genutility.metrics import hamming_distance
-from genutility.metrictree import BKTree
+from metrictrees.bktree import BKTree
 from metrohash import MetroHash128
 from PIL import Image
 
@@ -79,7 +79,6 @@ def image_hash_tree(dirs, exts=None, processfunc=None):
                 logging.debug("Skipped: %s", entry.path)
                 entry.follow = False
             elif entry.is_file():
-
                 ext = entrysuffix(entry)[1:].lower()
 
                 if ext in exts:
@@ -165,7 +164,6 @@ def dupgroups_no_size(dirs, hashfunc):
 
 
 if __name__ == "__main__":
-
     import csv
     from argparse import ArgumentParser
 
@@ -198,7 +196,6 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.INFO)
 
     if args.exact:
-
         hashfunc = hashfuncs[args.hashfunc]
 
         if args.no_size:
@@ -222,9 +219,7 @@ if __name__ == "__main__":
                         csvwriter.writerow([size, hash.hex(), path])
 
     elif args.images:
-
         with StdoutFile(args.out, "xt", encoding="utf-8") as fw:
-
             with tqdm() as pbar:
                 tree, map = image_hash_tree(args.directories, processfunc=lambda x: pbar.update(1))
 

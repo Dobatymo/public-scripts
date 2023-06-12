@@ -3,24 +3,25 @@ from __future__ import generator_stop
 import logging
 import os
 from fnmatch import fnmatch
+from typing import Callable, Iterator
 
 from genutility.filesystem import scandir_counts
 
 
-def log_error(path, exc):
-    logging.warning("Removing %s failed", path)
+def log_error(path: str, exc: Exception) -> None:
+    logging.warning("Removing %s failed: %s", path, exc)
 
 
-def enum_empty_dirs(dirpath, pattern="*"):
+def enum_empty_dirs(dirpath: str, pattern: str = "*") -> Iterator[str]:
     for entry, counts in scandir_counts(dirpath, files=False):
         if counts.null():
             if fnmatch(entry.name, pattern):
                 yield entry.path
 
 
-def find_empty_dirs(dirpath, pattern="*", remove=False, errorfunc=log_error):
-    # type(str, str) -> None
-
+def find_empty_dirs(
+    dirpath: str, pattern: str = "*", remove: bool = False, errorfunc: Callable[[str, Exception], None] = log_error
+) -> None:
     for path in enum_empty_dirs(dirpath, pattern):
         if remove:
             try:

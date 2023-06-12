@@ -8,7 +8,6 @@ from genutility.stdio import confirm
 
 
 def do(paths: Iterable[str], yes: bool) -> None:
-
     for path in paths:
         for entry in scandir_rec(path, dirs=False, files=True):
             stats = entry.stat()
@@ -23,7 +22,6 @@ def do(paths: Iterable[str], yes: bool) -> None:
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     parser = ArgumentParser()

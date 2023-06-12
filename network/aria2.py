@@ -3,7 +3,6 @@ from __future__ import generator_stop
 from genutility.aria import DEFAULT_HOST, DEFAULT_PORT, AriaDownloader
 
 if __name__ == "__main__":
-
     from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
     parser = ArgumentParser(

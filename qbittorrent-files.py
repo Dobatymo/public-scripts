@@ -13,11 +13,9 @@ logger = logging.getLogger(__name__)
 
 
 class QBittorrentMeta:
-
     __slots__ = ("btpath", "map")
 
     def __init__(self, path: Optional[Path] = None) -> None:
-
         self.btpath = path or Path(os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup"))
         if not self.btpath.exists():
             raise FileNotFoundError(f"QBittorrent torrent directory {self.btpath} doesn't exist")
@@ -27,7 +25,6 @@ class QBittorrentMeta:
         self.map = self.get_single_file_mappings(self.btpath)
 
     def move_single_file_to(self, src: Path, dst: Path) -> None:
-
         if src.name != dst.name:
             raise ValueError(f"Cannot change file name {src.name} -> {dst.name}. Only directories.")
 
@@ -39,7 +36,6 @@ class QBittorrentMeta:
         src.rename(dst)
 
     def move_single_file(self, path: Path, dry: bool = True) -> bool:
-
         """Finds torrent which matches `path` and move file to the correct location."""
 
         info_hash = self.path_to_info_hash(path)
@@ -52,7 +48,6 @@ class QBittorrentMeta:
             return True
 
     def single_file_moved(self, path: Path, dry: bool = True) -> bool:
-
         """Finds torrent which matches `path` and adjusts fastresume meta data."""
 
         info_hash = self.path_to_info_hash(path)
@@ -62,7 +57,6 @@ class QBittorrentMeta:
             return self.set_fastresume_path(info_hash, fspath(path.parent))
 
     def path_to_info_hash(self, path: Path) -> str:
-
         name = path.name
         size = path.stat().st_size
 
@@ -72,10 +66,9 @@ class QBittorrentMeta:
             raise NotFound(f"Could not find infohash for name={name}, size={size}")
 
     def read_fastresume_file(self, info_hash: str) -> dict:
-
         fastresumepath = self.btpath / f"{info_hash}.fastresume"
         try:
-            bb = read_torrent(fspath(fastresumepath))
+            bb = read_torrent(fastresumepath)
         except FileNotFoundError:
             raise FileNotFoundError(f"Could not find fastresume file: {fastresumepath}")
 
@@ -85,17 +78,14 @@ class QBittorrentMeta:
         return bb
 
     def write_fastresume_file(self, bb: dict, info_hash: str) -> None:
-
         fastresumepath = self.btpath / f"{info_hash}.fastresume"
-        write_torrent(bb, fspath(fastresumepath))
+        write_torrent(bb, fastresumepath)
 
     def get_fastresume_path(self, info_hash: str) -> str:
-
         bb = self.read_fastresume_file(info_hash)
         return bb["save_path"]
 
     def set_fastresume_path(self, info_hash: str, torrentpath: str) -> bool:
-
         bb = self.read_fastresume_file(info_hash)
 
         if bb["save_path"] == torrentpath:
@@ -108,11 +98,10 @@ class QBittorrentMeta:
 
     @staticmethod
     def get_single_file_mappings(path: Path):
-
         ret: Dict[Tuple[str, int], str] = {}
 
         for torrentfile in path.glob("*.torrent"):
-            info = read_torrent_info_dict(fspath(torrentfile))
+            info = read_torrent_info_dict(torrentfile)
             info_hash = torrent_info_hash(info)
             if info_hash != torrentfile.stem:
                 raise AssertionError(
@@ -134,9 +123,8 @@ class QBittorrentMeta:
 
 
 def replace_directory(dirpath: Path, from_s: str, to_s: str) -> None:
-
     for filepath in dirpath.glob("*.fastresume"):
-        bb = read_torrent(fspath(filepath))
+        bb = read_torrent(filepath)
 
         try:
             save_a = bb["qBt-savePath"]
@@ -153,7 +141,6 @@ def replace_directory(dirpath: Path, from_s: str, to_s: str) -> None:
 
 
 def match_directory(path: Path, move_files: bool = False, recursive: bool = True) -> None:
-
     """Scans directory `path` for files known to QBittorrent and either adjusts the
     fastresume files to have the correct path, or moves the files to the path specified
     in the fastresume files.
@@ -187,7 +174,6 @@ def match_directory(path: Path, move_files: bool = False, recursive: bool = True
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     from genutility.args import is_dir, is_file

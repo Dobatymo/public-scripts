@@ -14,7 +14,6 @@ def remove_empty_error_log(path, e):
 
 
 def remove_empty_dirs(path: str, ignore_errors: bool = False, onerror: Optional[Callable] = None) -> None:
-
     for dirpath, dirnames, filenames in os.walk(path, topdown=False):
         if filenames:
             continue  # skip remove
@@ -38,14 +37,12 @@ MODES = ("fail", "no_move", "overwrite", "rename")
 
 
 def merge(src, dst, mode="no_move"):
-
     assert_choice("mode", mode, MODES)
 
     if not src.is_dir() or not dst.is_dir():
         raise ValueError("src and dst must be directories")
 
     for path in src.rglob("*"):
-
         if path.is_dir():
             relpath = path.relative_to(src)
             (dst / relpath).mkdir(parents=True, exist_ok=True)
@@ -71,7 +68,6 @@ def merge(src, dst, mode="no_move"):
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     from genutility.args import is_dir

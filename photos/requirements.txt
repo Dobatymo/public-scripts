@@ -1,0 +1,5 @@
+genutility[args,filesystem,iter]
+piexif>=1.1.3
+Pillow
+pillow-heif
+rich>=12.3.0

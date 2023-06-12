@@ -12,7 +12,6 @@ metakeys = ["exif", "iptc", "xmp", "raw_xmp", "comment", "icc"]
 
 
 def read_meta(path: str) -> Dict[str, Any]:
-
     with pyexiv2.Image(path) as metafile:
         metadata = {k: getattr(metafile, f"read_{k}")() for k in metakeys}
 
@@ -28,7 +27,6 @@ def write_meta(path: str, metadata: Dict[str, Any]) -> None:
 
 
 def process(args: Namespace) -> None:
-
     img = Image.open(args.in_path)
     metadata = read_meta(fspath(args.in_path))
     logging.info(f"Found meta data: {', '.join(metadata.keys())}")
@@ -77,5 +75,4 @@ def main():
 
 
 if __name__ == "__main__":
-
     main()

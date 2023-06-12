@@ -13,7 +13,6 @@ from genutility.torrent import read_torrent, torrent_info_hash
 
 
 def todict(obj):
-
     if isinstance(obj, dict):
         return {k: todict(v) for k, v in obj.items()}
     if isinstance(obj, list):
@@ -52,7 +51,6 @@ def main():
 
     else:
         with PathOrTextIO(args.out or sys.stdout, "wt") as fw:
-
             if args.json:
                 return json.dump(
                     td,

@@ -3,7 +3,6 @@ from __future__ import generator_stop
 from genutility.json import jl_to_csv
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
     from operator import itemgetter
 

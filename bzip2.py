@@ -48,7 +48,6 @@ parser.add_argument("path")
 args = parser.parse_args()
 
 with open(args.path, "rb") as fr:
-
     if args.stdout:
         context = nullcontext(sys.stdout.buffer)
     else:

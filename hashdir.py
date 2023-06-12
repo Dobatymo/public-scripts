@@ -18,14 +18,12 @@ if TYPE_CHECKING:
 
 class DirHasher:
     def __init__(self, paths: Sequence[str], hashes: Iterable[bytes], toppath: Optional[str] = None) -> None:
-
         self.paths = paths
         self.hashes = hashes
         self._toppath = toppath
 
     @property
     def toppath(self) -> str:
-
         if self._toppath is None:
             self._toppath = os.path.commonprefix(self.paths)
 
@@ -33,7 +31,6 @@ class DirHasher:
 
     @classmethod
     def from_fs(cls, dirpath: PathType, hashcls: HashCls = hashlib.sha1) -> "DirHasher":
-
         """Creates a DirHasher instance for a filesystem folder."""
 
         paths = [entry.path for entry in sorted(scandir_rec(dirpath, files=True, dirs=False), key=lambda x: x.path)]
@@ -43,7 +40,6 @@ class DirHasher:
 
     @classmethod
     def from_file(cls, filepath: PathType) -> "DirHasher":
-
         """Reads a file ins md5sum or sha1sum format and creates a DirHasher instance."""
 
         hashes: List[bytes] = []
@@ -69,7 +65,6 @@ class DirHasher:
     def to_stream(
         self, stream: IO[str], include_total: bool = True, hashcls: HashCls = hashlib.sha1, include_names: bool = True
     ) -> None:
-
         for filehash, path in zip(self.hashes, self.paths):
             stream.write(self.format_line(filehash.hex(), path))
 
@@ -79,13 +74,11 @@ class DirHasher:
             stream.write(line)
 
     def total_line(self, hashcls: HashCls = hashlib.sha1, include_names: bool = True) -> str:
-
         m = self.total(hashcls, include_names)
         line = self.format_line(m.hexdigest(), self.toppath, end="")
         return line
 
     def total(self, hashcls: HashCls = hashlib.sha1, include_names: bool = True) -> Hashobj:
-
         if isinstance(hashcls, str):
             m = hashlib.new(hashcls)
         else:
@@ -100,7 +93,6 @@ class DirHasher:
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     parser = ArgumentParser(description="calculate hash of all files in directory combined")

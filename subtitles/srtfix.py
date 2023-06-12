@@ -25,7 +25,6 @@ def sync_srt(
 
 
 if __name__ == "__main__":
-
     from argparse import ArgumentParser
 
     from genutility.args import existing_path, new_path
