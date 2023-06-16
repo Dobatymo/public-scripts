@@ -13,7 +13,8 @@ def log_error(path: str, exc: Exception) -> None:
 
 
 def enum_empty_dirs(dirpath: str, pattern: str = "*") -> Iterator[str]:
-    for entry, counts in scandir_counts(dirpath, files=False):
+    for entry, counts in scandir_counts(dirpath, files=False, others=False):
+        assert counts is not None  # because `files=False, others=False` above
         if counts.null():
             if fnmatch(entry.name, pattern):
                 yield entry.path

@@ -1,6 +1,6 @@
+import logging
 from argparse import ArgumentParser
 from pathlib import Path
-import logging
 
 from genutility.args import is_dir
 from genutility.filesystem import scandir_ext
