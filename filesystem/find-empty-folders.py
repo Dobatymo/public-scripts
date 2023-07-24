@@ -5,15 +5,15 @@ import os
 from fnmatch import fnmatch
 from typing import Callable, Iterator
 
-from genutility.filesystem import scandir_counts
+from genutility.filesystem import scandir_counts, scandir_error_log_warning
 
 
 def log_error(path: str, exc: Exception) -> None:
-    logging.warning("Removing %s failed: %s", path, exc)
+    logging.warning("Removing <%s> failed: %s", path, exc)
 
 
 def enum_empty_dirs(dirpath: str, pattern: str = "*") -> Iterator[str]:
-    for entry, counts in scandir_counts(dirpath, files=False, others=False):
+    for entry, counts in scandir_counts(dirpath, files=False, others=False, onerror=scandir_error_log_warning):
         assert counts is not None  # because `files=False, others=False` above
         if counts.null():
             if fnmatch(entry.name, pattern):

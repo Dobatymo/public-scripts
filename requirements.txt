@@ -1,6 +1,6 @@
 bencode.py>=2.0.0 # bencode
 genutility[image,pillow,videofile]>=0.0.97
-libtorrent
+libtorrent>=2.0.5
 metrictrees
 metrohash-python
 mutagen
