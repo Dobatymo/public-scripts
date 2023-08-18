@@ -1,5 +1,5 @@
 bencode.py>=2.0.0 # bencode
-genutility[image,pillow,videofile]>=0.0.97
+genutility[image,pillow,videofile,rich,torrent]>=0.0.102
 libtorrent>=2.0.5
 metrictrees
 metrohash-python
@@ -9,5 +9,5 @@ pyexiv2
 pymongo
 pypyodbc
 requests
-tqdm
+rich
 win32api

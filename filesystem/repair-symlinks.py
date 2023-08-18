@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
-from genutility.filesystem import realpath_win
+from genutility.os import realpath
 
 
 def relink_base(basepath: Path, newbasepath: Path) -> None:
@@ -18,7 +18,7 @@ def relink_base(basepath: Path, newbasepath: Path) -> None:
 
     for path in basepath.iterdir():
         if path.is_symlink():
-            linkpath = Path(realpath_win(path))
+            linkpath = Path(realpath(path))
             if not linkpath.exists():
                 newpath = newbasepath / linkpath.name
                 if newpath.exists():

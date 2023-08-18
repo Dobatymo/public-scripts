@@ -83,6 +83,8 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
 
     from genutility.args import existing_path, future_file
+    from genutility.rich import Progress
+    from rich.progress import Progress as RichProgress
 
     parser = ArgumentParser(description="Create torrent file")
     parser.add_argument("inpath", type=existing_path, help="Path to files")
@@ -118,27 +120,23 @@ if __name__ == "__main__":
         print("Added", x)
         return True
 
-    from tqdm import tqdm
+    with RichProgress(disable=args.silent) as progress:
+        p = Progress(progress)
+        with p.task(description="Creating torrent...") as task:
 
-    pbar = tqdm(disable=args.silent)
+            def progressfunc(total, i):
+                task.update(total=total, completed=i)
 
-    def progress(total, i):
-        pbar.total = total
-        pbar.update()
-
-    try:
-        data = create_torrent(
-            args.inpath,
-            args.trackers,
-            args.private,
-            args.pieces,
-            args.piece_size,
-            args.source,
-            predicate=predicate,
-            progress=progress,
-        )
-    finally:
-        pbar.close()
+            data = create_torrent(
+                args.inpath,
+                args.trackers,
+                args.private,
+                args.pieces,
+                args.piece_size,
+                args.source,
+                predicate=predicate,
+                progress=progressfunc,
+            )
 
     with open(args.outpath, "wb") as fw:
         fw.write(data)

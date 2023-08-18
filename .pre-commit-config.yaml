@@ -1,54 +1,59 @@
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
-    hooks:
-      - id: check-json
-      - id: check-yaml
-      - id: check-toml
-      - id: check-case-conflict
-      - id: check-added-large-files
-      - id: debug-statements
-      - id: end-of-file-fixer
-      - id: mixed-line-ending
-        args: ["--fix=no"]
-      - id: requirements-txt-fixer
-      - id: trailing-whitespace
-        args: ["--markdown-linebreak-ext=md"]
-  - repo: https://github.com/asottile/pyupgrade
-    rev: 'v3.6.0'
-    hooks:
-      - id: pyupgrade
-        args: ["--py36-plus"]
-  - repo: https://github.com/psf/black
-    rev: '23.3.0'
-    hooks:
-      - id: black
-  - repo: https://github.com/PyCQA/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-  - repo: https://github.com/pycqa/flake8
-    rev: 6.0.0
-    hooks:
-      - id: flake8
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: 'v1.3.0'
-    hooks:
-      - id: mypy
-        args: ["--install-types", "--non-interactive", "--show-error-codes"]
-        additional_dependencies:
-          - bencode.py==4.0.0
-          - genutility[image,pillow,videofile]==0.0.82
-          - libtorrent==2.0.9
-          - metrohash-python==1.1.3.2
-          - mutagen==1.45.1
-          - Pillow==9.3.0
-          - pyexiv2==2.7.1
-          - pymongo==4.1.0
-          - pypyodbc==1.3.6
-          - requests==2.27.1
-          - tqdm==4.64.0
-  - repo: https://github.com/Yelp/detect-secrets
-    rev: v1.4.0
-    hooks:
-      - id: detect-secrets
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.4.0
+  hooks:
+  - id: check-json
+  - id: check-yaml
+  - id: check-toml
+  - id: check-case-conflict
+  - id: check-added-large-files
+  - id: debug-statements
+  - id: end-of-file-fixer
+  - id: mixed-line-ending
+    args: [--fix=no]
+  - id: requirements-txt-fixer
+  - id: trailing-whitespace
+    args: [--markdown-linebreak-ext=md]
+- repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+  rev: v2.10.0
+  hooks:
+  - id: pretty-format-yaml
+    args: [--autofix]
+- repo: https://github.com/asottile/pyupgrade
+  rev: v3.10.1
+  hooks:
+  - id: pyupgrade
+    args: [--py36-plus]
+- repo: https://github.com/psf/black
+  rev: 23.7.0
+  hooks:
+  - id: black
+- repo: https://github.com/PyCQA/isort
+  rev: 5.12.0
+  hooks:
+  - id: isort
+- repo: https://github.com/pycqa/flake8
+  rev: 6.1.0
+  hooks:
+  - id: flake8
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v1.5.0
+  hooks:
+  - id: mypy
+    args: [--install-types, --non-interactive, --show-error-codes]
+    additional_dependencies:
+    - bencode.py==4.0.0
+    - genutility[image,pillow,videofile,rich,torrent]==0.0.102
+    - libtorrent==2.0.9
+    - metrohash-python==1.1.3.2
+    - mutagen==1.45.1
+    - Pillow==9.3.0
+    - pyexiv2==2.7.1
+    - pymongo==4.1.0
+    - pypyodbc==1.3.6
+    - requests==2.27.1
+    - rich==13.5.2
+- repo: https://github.com/Yelp/detect-secrets
+  rev: v1.4.0
+  hooks:
+  - id: detect-secrets

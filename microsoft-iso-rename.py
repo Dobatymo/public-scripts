@@ -13,7 +13,7 @@ class MicrosoftHashes:
 
     def __init__(self) -> None:
         try:
-            with open("microsoft-hashes.json", "rt", encoding="utf-8") as fr:
+            with open("microsoft-hashes.json", encoding="utf-8") as fr:
                 self.hashes = json.load(fr)
         except FileNotFoundError:
             self.hashes = {}

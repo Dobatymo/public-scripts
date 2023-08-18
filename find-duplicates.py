@@ -3,25 +3,27 @@ from __future__ import generator_stop
 import logging
 from collections import defaultdict
 from hashlib import sha1
+from typing import Callable, Collection, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
 
 from genutility.exceptions import ParseError, Skip
 from genutility.fileformats.jfif import hash_raw_jpeg
 from genutility.fileformats.png import hash_raw_png
-from genutility.filesystem import entrysuffix, fileextensions, scandir_rec
+from genutility.filesystem import PathType, entrysuffix, fileextensions, scandir_rec
 from genutility.fingerprinting import phash_blockmean
 from genutility.hash import hash_file
-from genutility.iter import progress
 from genutility.metrics import hamming_distance
+from genutility.rich import Progress
 from metrictrees.bktree import BKTree
 from metrohash import MetroHash128
 from PIL import Image
+from rich.progress import Progress as RichProgress
 
 
-def metrohash(path):
+def metrohash(path: str) -> bytes:
     return hash_file(path, MetroHash128).digest()
 
 
-def nometahash(path):
+def nometahash(path: str) -> bytes:
     lowerpath = path.lower()
 
     if lowerpath.endswith(".jpg") or lowerpath.endswith(".jpeg"):
@@ -57,7 +59,7 @@ def nometahash(path):
 IGNORE_DIRNAMES = {".git"}
 
 
-def iter_size_path(dirs):
+def iter_size_path(dirs: Iterable[PathType]) -> Iterator[Tuple[int, str]]:
     for dir in dirs:
         for entry in scandir_rec(dir, dirs=True, follow_symlinks=False, allow_skip=True):
             if entry.is_dir() and entry.name in IGNORE_DIRNAMES:
@@ -68,7 +70,9 @@ def iter_size_path(dirs):
                 yield filesize, entry.path
 
 
-def image_hash_tree(dirs, exts=None, processfunc=None):
+def image_hash_tree(
+    dirs: Iterable[PathType], exts: Optional[Collection] = None, processfunc=None
+) -> Tuple[BKTree, Dict[bytes, List[str]]]:
     tree = BKTree(hamming_distance)
     map = defaultdict(list)
     exts = exts or fileextensions.images
@@ -84,6 +88,7 @@ def image_hash_tree(dirs, exts=None, processfunc=None):
                 if ext in exts:
                     try:
                         img = Image.open(entry.path, "r")
+                        img.load()  # force load so OSError can be caught here
                     except OSError:
                         logging.warning("Cannot open image: %s", entry.path)
                     else:
@@ -96,7 +101,9 @@ def image_hash_tree(dirs, exts=None, processfunc=None):
     return tree, map
 
 
-def iter_size_hashes(dups, hashfunc):
+def iter_size_hashes(
+    dups: Mapping[int, List[str]], hashfunc: Callable[[str], bytes]
+) -> Iterator[Tuple[int, Dict[bytes, List[str]]]]:
     for size, group in dups.items():
         hashes = defaultdict(list)
 
@@ -113,11 +120,12 @@ def iter_size_hashes(dups, hashfunc):
         yield size, hashes
 
 
-def dupgroups(dirs, hashfunc):
+def dupgroups(
+    dirs: Iterable[PathType], hashfunc: Callable[[str], bytes], progress: Progress
+) -> Dict[Tuple[int, bytes], List[str]]:
     dups = defaultdict(list)
 
-    logging.info("Collecting files")
-    for size, path in progress(iter_size_path(dirs)):
+    for size, path in progress.track(iter_size_path(dirs), description="Collecting files..."):
         dups[size].append(path)
     logging.info("Found %s size groups", len(dups))
 
@@ -126,11 +134,11 @@ def dupgroups(dirs, hashfunc):
     logging.info("Found %s duplicate size groups", len(dups))
 
     logging.info("Calculating hash groups")
-    for size, hashes in progress(iter_size_hashes(dups, hashfunc), length=len(dups)):
+    for size, hashes in progress.track(iter_size_hashes(dups, hashfunc), total=len(dups)):
         dups[size] = hashes
 
     logging.info("Filtering files based on hashes")
-    newdups = {}
+    newdups: Dict[Tuple[int, bytes], List[str]] = {}
     for size, sizegroup in dups.items():
         for hash, hashgroup in sizegroup.items():
             if len(hashgroup) > 1:
@@ -139,11 +147,12 @@ def dupgroups(dirs, hashfunc):
     return newdups
 
 
-def dupgroups_no_size(dirs, hashfunc):
+def dupgroups_no_size(
+    dirs: Iterable[PathType], hashfunc: Callable[[str], bytes], progress: Progress
+) -> Dict[bytes, List[Tuple[str, int]]]:
     dups = defaultdict(list)
 
-    logging.info("Calculating hash groups")
-    for size, path in progress(iter_size_path(dirs)):
+    for size, path in progress.track(iter_size_path(dirs), description="Calculating hash groups..."):
         try:
             hash = hashfunc(path)
         except PermissionError:
@@ -154,6 +163,7 @@ def dupgroups_no_size(dirs, hashfunc):
             pass
         else:
             dups[hash].append((path, size))
+
     logging.info("Found %s hash groups", len(dups))
 
     logging.info("Filtering files based on hash")
@@ -169,7 +179,6 @@ if __name__ == "__main__":
 
     from genutility.args import is_dir
     from genutility.file import StdoutFile
-    from tqdm import tqdm
 
     hashfuncs = {
         "metrohash": metrohash,
@@ -195,49 +204,52 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(level=logging.INFO)
 
-    if args.exact:
-        hashfunc = hashfuncs[args.hashfunc]
+    with RichProgress(disable=not args.verbose) as progress:
+        p = Progress(progress)
 
-        if args.no_size:
-            groups = dupgroups_no_size(args.directories, hashfunc)
+        if args.exact:
+            hashfunc = hashfuncs[args.hashfunc]
 
-            with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
-                csvwriter = csv.writer(csvfile)
-                csvwriter.writerow(["hash", "path", "size"])
-                for hash, paths_sizes in groups.items():
-                    for path, size in paths_sizes:
-                        csvwriter.writerow([hash.hex(), path, size])
+            if args.no_size:
+                groups = dupgroups_no_size(args.directories, hashfunc, p)
 
-        else:
-            groups = dupgroups(args.directories, hashfunc)
+                with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
+                    csvwriter = csv.writer(csvfile)
+                    csvwriter.writerow(["hash", "path", "size"])
+                    for hash, paths_sizes in groups.items():
+                        for path, size in paths_sizes:
+                            csvwriter.writerow([hash.hex(), path, size])
 
-            with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
-                csvwriter = csv.writer(csvfile)
-                csvwriter.writerow(["size", "hash", "path"])
-                for (size, hash), paths in groups.items():
-                    for path in paths:
-                        csvwriter.writerow([size, hash.hex(), path])
+            else:
+                groups = dupgroups(args.directories, hashfunc, p)
 
-    elif args.images:
-        with StdoutFile(args.out, "xt", encoding="utf-8") as fw:
-            with tqdm() as pbar:
-                tree, map = image_hash_tree(args.directories, processfunc=lambda x: pbar.update(1))
+                with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
+                    csvwriter = csv.writer(csvfile)
+                    csvwriter.writerow(["size", "hash", "path"])
+                    for (size, hash), paths in groups.items():
+                        for path in paths:
+                            csvwriter.writerow([size, hash.hex(), path])
 
-            for d in range(100):
-                groups = []
+        elif args.images:
+            with StdoutFile(args.out, "xt", encoding="utf-8") as fw:
+                with p.task(description="Hashing images...") as task:
+                    tree, map = image_hash_tree(args.directories, processfunc=lambda _: task.advance(1))
 
-                for hashgroup in tree.find_by_distance(d):
-                    files = []
-                    for hash in hashgroup:
-                        files.extend(map[hash])
-                    groups.append(files)
+                for d in range(100):
+                    groups = []
 
-                if groups:
-                    fw.write(f"Distance: {d}\n")
-                    for hashgroup in groups:
-                        fw.write(f"{hashgroup}\n")
+                    for hashgroup in tree.find_by_distance(d):
+                        files = []
+                        for hash in hashgroup:
+                            files.extend(map[hash])
+                        groups.append(files)
 
-                    fw.write("---\n")
+                    if groups:
+                        fw.write(f"Distance: {d}\n")
+                        for hashgroup in groups:
+                            fw.write(f"{hashgroup}\n")
 
-    elif args.audio:
-        parser.error("Duplicate search for audio is no implemented yet")
+                        fw.write("---\n")
+
+        elif args.audio:
+            parser.error("Duplicate search for audio is no implemented yet")

@@ -1,2 +1,5 @@
 *.bak
 *.bat
+
+__pycache__/
+.ipynb_checkpoints/
