@@ -9,6 +9,11 @@ from genutility.hash import sha1_hash_file
 
 
 class MicrosoftHashes:
+    """
+    https://www.heidoc.net/php/myvsdump.php
+    https://files.rg-adguard.net/search
+    """
+
     hashes: Dict[str, str]
 
     def __init__(self) -> None:
@@ -77,17 +82,22 @@ class MicrosoftHashes:
         self.close()
 
 
-def iter_hashes(basepath: Path) -> Iterator[Tuple[Path, str]]:
-    for path in basepath.rglob("*.iso"):
+def iter_hashes(basepath: Path, recursive: bool = False) -> Iterator[Tuple[Path, str]]:
+    if recursive:
+        globfunc = basepath.rglob
+    else:
+        globfunc = basepath.glob
+
+    for path in globfunc("*.iso"):
         hex = sha1_hash_file(path).hexdigest()
         yield path, hex
 
 
-def rename_all_in_folder(basepath: Path, move_to_subdir: bool) -> None:
+def rename_all_in_folder(basepath: Path, move_to_subdir: bool, recursive: bool = False) -> None:
     valid = "valid"
 
     with MicrosoftHashes() as hashes:
-        for path, hex in iter_hashes(basepath):
+        for path, hex in iter_hashes(basepath, recursive):
             filename = hashes.get_filename(hex)
             if not filename:
                 print(f"No filename found for <{path}> [{hex}]")
@@ -115,6 +125,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("path", type=is_dir, default=Path("."))
     parser.add_argument("--move-to-subdir", action="store_true")
+    parser.add_argument("-r", "--recursive", action="store_true")
     args = parser.parse_args()
 
-    rename_all_in_folder(args.path, args.move_to_subdir)
+    rename_all_in_folder(args.path, args.move_to_subdir, args.recursive)

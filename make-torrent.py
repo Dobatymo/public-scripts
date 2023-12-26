@@ -19,6 +19,7 @@ def create_torrent(
     pieces: Optional[int] = None,
     piece_size: Optional[int] = None,
     source: Optional[str] = None,
+    flags: int = 0,
     predicate: Optional[Callable] = None,
     progress: Optional[Callable] = None,
     min_piece_exp: int = 14,
@@ -56,7 +57,7 @@ def create_torrent(
         piece_size = 2 ** min(max(round(log2(fs.total_size() / pieces)), min_piece_exp), max_piece_exp)
         logger.info("piece_size", piece_size)
 
-    t = libtorrent.create_torrent(fs, piece_size)
+    t = libtorrent.create_torrent(fs, piece_size, flags)
 
     for tracker in trackers:
         t.add_tracker(tracker)
@@ -98,6 +99,11 @@ if __name__ == "__main__":
     )
     parser.add_argument("--silent", action="store_true", help="Don't show progress bar")
     parser.add_argument("--private", action="store_true", help="Create private torrent")
+
+    version_flags = parser.add_mutually_exclusive_group()
+    version_flags.add_argument("--v1", action="store_true", help="Create v1 torrent (hybrid otherwise)")
+    version_flags.add_argument("--v2", action="store_true", help="Create v2 torrent (hybrid otherwise)")
+
     parser.add_argument(
         "--pieces",
         type=int,
@@ -120,6 +126,11 @@ if __name__ == "__main__":
         print("Added", x)
         return True
 
+    if args.v1:
+        flags = libtorrent.create_torrent.v1_only
+    if args.v2:
+        flags = libtorrent.create_torrent.v2_only
+
     with RichProgress(disable=args.silent) as progress:
         p = Progress(progress)
         with p.task(description="Creating torrent...") as task:
@@ -134,6 +145,7 @@ if __name__ == "__main__":
                 args.pieces,
                 args.piece_size,
                 args.source,
+                flags,
                 predicate=predicate,
                 progress=progressfunc,
             )
