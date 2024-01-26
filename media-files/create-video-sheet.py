@@ -1,13 +1,13 @@
-from __future__ import annotations, generator_stop
+from __future__ import generator_stop
 
 import logging
 import platform
 from datetime import timedelta
 from fractions import Fraction
-from math import ceil
+from math import ceil, floor
 from os import fspath
 from pathlib import Path
-from typing import Iterator
+from typing import Dict, Iterator, Optional, Tuple
 
 from genutility.filesystem import mdatetime
 from genutility.image import resize_oar
@@ -15,8 +15,11 @@ from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
 from genutility.math import byte2size_str
 from genutility.pillow import multiline_textsize
+from genutility.rich import Progress
 from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
 from PIL import Image, ImageDraw, ImageFont
+from rich.logging import RichHandler
+from rich.progress import Progress as RichProgress
 
 if platform.system() == "Linux":
     DEFAULT_FONTFILE = "LiberationSans-Regular.ttf"
@@ -30,55 +33,60 @@ DEFAULT_PADDING = (5, 5)
 
 logger = logging.getLogger(__name__)
 
-try:
-    cv2 = CvVideo.import_backend()
-    BackendCls: type = CvVideo
-    logger.warning("Using cv2 backend")
 
-except ImportError:
-    av = AvVideo.import_backend()
-    BackendCls = AvVideo
-    logger.warning("Using av backend")
+def make_seconds(BackendCls):
+    class EveryX(BackendCls):
+        def __init__(self, path: str, seconds: float) -> None:
+            BackendCls.__init__(self, path)
+            if seconds <= 0.0:
+                raise ValueError("seconds must be larger than 0")
+            self.seconds = seconds
 
+        def _frame_range(self, time_base: Fraction, duration: int) -> range:
+            steps = floor(duration * time_base / self.seconds)
+            return range(0, steps + 1)
 
-class EveryX(BackendCls):
-    def __init__(self, path: str, seconds: float) -> None:
-        BackendCls.__init__(self, path)
-        if seconds <= 0.0:
-            raise ValueError("seconds must be larger than 0")
-        self.seconds = seconds
+        def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
+            for i in self._frame_range(time_base, duration):
+                yield int(i * self.seconds / time_base)
 
-    def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
-        steps = ceil(duration * time_base / self.seconds)
-        for i in range(0, steps):
-            yield int(i * self.seconds / time_base)
+    return EveryX
 
 
-class FramesX(BackendCls):
-    def __init__(self, path: str, frames: int, include_sides: bool = False) -> None:
-        """if include_sides is True, the first and last frame will be included."""
+def make_frames(BackendCls):
+    class FramesX(BackendCls):
+        def __init__(self, path: str, frames: int, include_sides: bool = False) -> None:
+            """if include_sides is True, the first and last frame will be included."""
 
-        BackendCls.__init__(self, path)
-        if frames <= 0:
-            raise ValueError("frames must be larger than 0")
-        self.frames = frames
-        self.include_sides = include_sides
+            BackendCls.__init__(self, path)
+            if frames <= 0:
+                raise ValueError("frames must be larger than 0")
+            self.frames = frames
+            self.include_sides = include_sides
 
-    def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
-        duration_incl = duration - 1
+        def _frame_range(self, time_base: Fraction, duration: int) -> range:
+            if self.include_sides:
+                part_offset = 0
+            else:
+                part_offset = 1
 
-        if self.include_sides:
-            parts = self.frames - 1
-            part_offset = 0
-        else:
-            parts = self.frames + 1
-            part_offset = 1
+            return range(part_offset, self.frames + part_offset)
 
-        for i in range(part_offset, self.frames + part_offset):
-            yield int(i * duration_incl / parts)
+        def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
+            duration_incl = duration - 1
+
+            if self.include_sides:
+                parts = self.frames - 1
+            else:
+                parts = self.frames + 1
+
+            for i in self._frame_range(time_base, duration):
+                yield int(i * duration_incl / parts)
+
+    return FramesX
 
 
-def create_header(path: Path, meta: dict, template: str | None = None) -> str:
+def create_header(path: Path, meta: Dict, template: Optional[str] = None) -> str:
     filesize = path.stat().st_size
 
     template = template or DEFAULT_TEMPLATE
@@ -106,7 +114,7 @@ def calc_sheet_size(
     thumb_height: int,
     pad_width: int,
     pad_height: int,
-) -> tuple[int, int]:
+) -> Tuple[int, int]:
     sheet_width = thumb_width * cols + pad_width * (cols + 1)
     sheet_height = thumb_height * rows + pad_height * (rows + 1)
 
@@ -147,8 +155,9 @@ def _create_sheet(
         # 	from genutility.pillow import write_text
         # 	write_text(thumbnail, td.isoformat(), align, textcolor, textoutlinecolor, fontratio, padding=(1, 1))
 
-        if i == rows * cols:
-            raise RuntimeError("more image extracted than needed")
+        if i >= rows * cols:
+            logger.warning("more images extracted than needed")
+            # raise RuntimeError("more images extracted than needed")
 
         y, x = to_2d_index(i, cols)
 
@@ -213,11 +222,41 @@ def create_sheet(
     )
 
 
-def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
+def main(
+    inpath,
+    outpath,
+    cols: int,
+    rows: Optional[int],
+    seconds: Optional[float],
+    args: Dict,
+    progress,
+    backend: Optional[str] = None,
+    dry: bool = False,
+):
+    BackendCls: type
+
+    if backend is None:
+        try:
+            CvVideo.import_backend()
+            BackendCls = CvVideo
+            logger.warning("Using cv2 backend")
+        except ImportError:
+            AvVideo.import_backend()
+            BackendCls = AvVideo
+            logger.warning("Using av backend")
+    elif backend == "av":
+        AvVideo.import_backend()
+        BackendCls = AvVideo
+    elif backend == "cv":
+        CvVideo.import_backend()
+        BackendCls = CvVideo
+    else:
+        raise ValueError(f"Invalid backend: {backend}")
+
     if rows:
-        context = FramesX(inpath, cols * rows)
+        context = make_frames(BackendCls)(inpath, cols * rows)
     elif seconds:
-        context = EveryX(inpath, seconds)
+        context = make_seconds(BackendCls)(inpath, seconds)
 
     if args["header"] or args["timestamp"]:
         fontfile = args.get("fontfile", DEFAULT_FONTFILE)
@@ -228,6 +267,12 @@ def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
 
     with context as video:
         dar = video.meta["display_aspect_ratio"]
+        num_frames = len(video.frame_range())
+
+        if rows:
+            pass
+        elif seconds:
+            rows = ceil(num_frames / cols)
 
         if args["header"]:
             headertext = create_header(inpath, video.meta)
@@ -235,7 +280,7 @@ def main(inpath, outpath, cols, rows=None, seconds=None, args=None, dry=False):
             headertext = None
 
         sheet = create_sheet(
-            video.iterate(),
+            progress.track(video.iterate(), total=num_frames, description="Reading frames"),
             dar,
             cols,
             rows,
@@ -293,7 +338,7 @@ if __name__ == "__main__":
         "-s",
         "--seconds",
         metavar="N",
-        type=int,
+        type=float,
         help="Grab a video frame every N seconds",
     )
     parser.add_argument("--cols", metavar="C", type=int, help="Number of columns")
@@ -332,6 +377,11 @@ if __name__ == "__main__":
         help="JPEG output quality, ignored if outpath is not .jpg",
     )
     parser.add_argument("-d", "--dry", action="store_true", help="If set, no files are actually created")
+    parser.add_argument(
+        "--backend",
+        choices=("cv", "av"),
+        help="Chose between pyav and opencv backend. If not set, first cv and than av is tried.",
+    )
     args = parser.parse_args()
 
     argsdict = {
@@ -346,22 +396,13 @@ if __name__ == "__main__":
         "quality": args.quality,
     }
 
-    try:
-        # from chromalog import ColorizingStreamHandler
-        # logger.addHandler(ColorizingStreamHandler())
-        import chromalog
-
-        logmodule = chromalog
-    except ImportError:
-        from warnings import warn
-
-        warn("Could not import chromalog, showing uncolored logs")
-        logmodule = logging
+    handler = RichHandler()
+    FORMAT = "%(message)s"
 
     if args.verbose:
-        logmodule.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG, format=FORMAT, handlers=[handler])
     else:
-        logmodule.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.INFO, format=FORMAT, handlers=[handler])
 
     if args.colsrows:
         cols, rows = args.colsrows
@@ -369,7 +410,7 @@ if __name__ == "__main__":
 
     elif args.seconds:
         if not args.cols:
-            parser.error("--seconds xnor --cols must be given")
+            parser.error("when --seconds is used, --cols must be given")
 
         cols = args.cols
         rows = None
@@ -382,7 +423,9 @@ if __name__ == "__main__":
             assert not args.outpath.is_dir()
             outpath = args.outpath
 
-        main(args.inpath, outpath, cols, rows, seconds, argsdict, args.dry)
+        with RichProgress() as p:
+            progress = Progress(p)
+            main(args.inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry)
 
     elif args.inpath.is_dir():
         video_suffixes = {"." + ext for ext in fileextensions.video}
@@ -392,33 +435,35 @@ if __name__ == "__main__":
         else:
             it = args.inpath.glob("*")
 
-        for inpath in it:
-            if not inpath.is_file():
-                continue
+        with RichProgress() as p:
+            progress = Progress(p)
+            for inpath in progress.track(it, description="Reading files"):
+                if not inpath.is_file():
+                    continue
 
-            if inpath.suffix.lower() not in video_suffixes:
-                logger.debug("Skipping non-video file %s", inpath)
-                continue
+                if inpath.suffix.lower() not in video_suffixes:
+                    logger.debug("Skipping non-video file %s", inpath)
+                    continue
 
-            if args.outpath is None:
-                outpath = inpath.with_suffix(args.format)
-            else:
-                outpath = args.outpath / inpath.parent.relative_to(args.inpath)
-                outpath.mkdir(parents=True, exist_ok=True)
-                outpath = outpath / Path(inpath.name).with_suffix(args.format)
+                if args.outpath is None:
+                    outpath = inpath.with_suffix(args.format)
+                else:
+                    outpath = args.outpath / inpath.parent.relative_to(args.inpath)
+                    outpath.mkdir(parents=True, exist_ok=True)
+                    outpath = outpath / Path(inpath.name).with_suffix(args.format)
 
-            if args.overwrite or not outpath.exists():
-                logger.info("Processing %s", inpath)
+                if args.overwrite or not outpath.exists():
+                    logger.info("Processing %s", inpath)
 
-                # filerelpath = inpath.relative_to(args.inpath)
-                try:
-                    main(inpath, outpath, cols, rows, seconds, argsdict, args.dry)
-                except NoGoodFrame:
-                    logger.warning("Skipping broken file %s", inpath)
-                except Exception:
-                    logger.exception("Skipping %s", inpath)
-            else:
-                logger.info("Skipping existing file %s", inpath)
+                    # filerelpath = inpath.relative_to(args.inpath)
+                    try:
+                        main(inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry)
+                    except NoGoodFrame:
+                        logger.warning("Skipping broken file %s", inpath)
+                    except Exception:
+                        logger.exception("Skipping %s", inpath)
+                else:
+                    logger.info("Skipping existing file %s", inpath)
 
     else:
         parser.error("inpath is neither file nor directory")

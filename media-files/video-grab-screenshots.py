@@ -11,6 +11,7 @@ if __name__ == "__main__":
     from genutility.args import between, existing_path, suffix
     from genutility.filesystem import fileextensions
     from genutility.videofile import NoGoodFrame, grab_pic
+    from rich.logging import RichHandler
 
     parser = ArgumentParser()
     parser.add_argument("inpath", type=existing_path)
@@ -42,22 +43,12 @@ if __name__ == "__main__":
     parser.add_argument("--backend", choices=("av", "cv"), default="cv")
     args = parser.parse_args()
 
-    try:
-        # from chromalog import ColorizingStreamHandler
-        # logger.addHandler(ColorizingStreamHandler())
-        import chromalog
-
-        logmodule = chromalog
-    except ImportError:
-        from warnings import warn
-
-        warn("Could not import chromalog, showing uncolored logs")
-        logmodule = logging
-
+    handler = RichHandler()
+    FORMAT = "%(message)s"
     if args.verbose:
-        logmodule.basicConfig(level=logging.DEBUG)
+        logging.basicConfig(level=logging.DEBUG, format=FORMAT, handlers=[handler])
     else:
-        logmodule.basicConfig(level=logging.INFO)
+        logging.basicConfig(level=logging.INFO, format=FORMAT, handlers=[handler])
 
     if len(args.pos) == 1:
         pos = args.pos[0]
