@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from argparse import ArgumentParser
 
 parser = ArgumentParser()
@@ -10,5 +8,5 @@ args = parser.parse_args()
 bytes = b"\0" * 1024 * 1024
 
 with open(args.path, "wb") as fw:
-    for i in range(args.size):
+    for _i in range(args.size):
         fw.write(bytes)

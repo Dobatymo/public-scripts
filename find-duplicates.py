@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import logging
 from collections import defaultdict
 from hashlib import sha1

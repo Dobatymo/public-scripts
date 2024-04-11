@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from os import fspath
 from pathlib import Path
 from typing import TYPE_CHECKING

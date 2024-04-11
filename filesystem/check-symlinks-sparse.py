@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import logging
 
 from genutility.filesystem import iter_links

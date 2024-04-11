@@ -1,9 +1,7 @@
-from __future__ import generator_stop
-
 import logging
 import sys
+from contextlib import nullcontext
 
-from genutility.compat.contextlib import nullcontext
 from genutility.http import URLRequest
 
 

@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from typing import Iterable
 
 from genutility.filesystem import scandir_rec

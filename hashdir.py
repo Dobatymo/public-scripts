@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import hashlib
 import os.path
 import re
@@ -116,7 +114,7 @@ if __name__ == "__main__":
         if not args.path.is_dir():
             parser.error("path has to be a directory")
 
-        with StdoutFile(args.out, "xt") as fw:
+        with StdoutFile(args.out, "xt", encoding="utf-8") as fw:
             hasher = DirHasher.from_fs(args.path, args.algorithm)
             hasher.to_stream(fw, include_total=True, include_names=not args.no_names)
 

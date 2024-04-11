@@ -1,18 +1,16 @@
-from __future__ import generator_stop
-
 import logging
+from argparse import ArgumentParser
+from pathlib import Path
+
+from genutility.args import between, existing_path, suffix
+from genutility.filesystem import fileextensions
+from genutility.videofile import NoGoodFrame, grab_pic
+from rich.logging import RichHandler
 
 logger = logging.getLogger(__name__)
 
-if __name__ == "__main__":
-    from argparse import ArgumentParser
-    from pathlib import Path
 
-    from genutility.args import between, existing_path, suffix
-    from genutility.filesystem import fileextensions
-    from genutility.videofile import NoGoodFrame, grab_pic
-    from rich.logging import RichHandler
-
+def main():
     parser = ArgumentParser()
     parser.add_argument("inpath", type=existing_path)
     parser.add_argument("outpath", nargs="?", type=Path)
@@ -43,8 +41,9 @@ if __name__ == "__main__":
     parser.add_argument("--backend", choices=("av", "cv"), default="cv")
     args = parser.parse_args()
 
-    handler = RichHandler()
+    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z")
     FORMAT = "%(message)s"
+
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG, format=FORMAT, handlers=[handler])
     else:
@@ -95,3 +94,10 @@ if __name__ == "__main__":
                 logger.warning("Could not grab frame from %s: %s", path_in, e)
     else:
         parser.error("inpath is neither file nor directory")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")

@@ -1,14 +1,13 @@
-from __future__ import generator_stop
-
 import json
 import logging
 
 from bson import json_util
 from genutility.args import json_file
-from genutility.iter import progress
 from genutility.json import json_lines
+from genutility.rich import Progress
 from genutility.signal import HandleKeyboardInterrupt
 from pymongo import MongoClient
+from rich.progress import Progress as RichProgress
 
 
 def main(args):
@@ -34,11 +33,12 @@ def main(args):
         else:
             parser.error("--find or --agg must be specified")
 
-        with cursor:
+        with cursor, RichProgress() as progress:
+            p = Progress(progress)
             with json_lines.from_path(args.out, "xt") as jl:
                 Uninterrupted = HandleKeyboardInterrupt(True)
                 cursor = cursor.batch_size(args.batch_size)
-                for doc in progress(cursor):
+                for doc in p.track(cursor):
                     with Uninterrupted:
                         try:
                             jl.write(doc, default=json_util.default)

@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import errno
 import logging
 import os
@@ -14,7 +12,7 @@ def remove_empty_error_log(path, e):
 
 
 def remove_empty_dirs(path: str, ignore_errors: bool = False, onerror: Optional[Callable] = None) -> None:
-    for dirpath, dirnames, filenames in os.walk(path, topdown=False):
+    for dirpath, _dirnames, filenames in os.walk(path, topdown=False):
         if filenames:
             continue  # skip remove
 

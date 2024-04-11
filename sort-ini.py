@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from genutility.config import sort_config
 
 if __name__ == "__main__":

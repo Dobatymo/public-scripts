@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import logging
 from functools import partial
 from math import ceil, log2
@@ -20,8 +18,8 @@ def create_torrent(
     piece_size: Optional[int] = None,
     source: Optional[str] = None,
     flags: int = 0,
-    predicate: Optional[Callable] = None,
-    progress: Optional[Callable] = None,
+    predicate: Optional[Callable[[str], bool]] = None,
+    progress: Optional[Callable[[int, int], None]] = None,
     min_piece_exp: int = 14,
     max_piece_exp: int = 24,
 ) -> bytes:
@@ -46,12 +44,11 @@ def create_torrent(
 
     if path.is_file():
         fs.add_file(path.name, path.stat().st_size)
-
     elif path.is_dir():
         predicate = predicate or (lambda path: True)
         libtorrent.add_files(fs, fspath(path), predicate)
     else:
-        assert False, "Path neither file nor directory"
+        raise ValueError("Path neither file nor directory")
 
     if pieces:
         piece_size = 2 ** min(max(round(log2(fs.total_size() / pieces)), min_piece_exp), max_piece_exp)

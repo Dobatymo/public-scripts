@@ -1,10 +1,11 @@
-from __future__ import generator_stop
-
+import csv
 import logging
 import os
 import os.path
+import re
 import subprocess
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+from enum import Enum
 from pathlib import Path
 from typing import Collection, Iterator, Optional
 
@@ -13,8 +14,9 @@ from genutility.args import is_dir, suffix_lower
 from genutility.file import is_all_byte
 from genutility.filesystem import PathType, scandir_error_log_warning, scandir_ext, scandir_rec
 from genutility.os import realpath
-from genutility.rich import Progress, get_double_format_columns
+from genutility.rich import Progress, StdoutFile, get_double_format_columns
 from genutility.win.file import GetCompressedFileSize
+from rich.logging import RichHandler
 from rich.progress import Progress as RichProgress
 
 logger = logging.getLogger(__name__)
@@ -35,41 +37,73 @@ def _files(path: PathType, include: Collection[str], exclude: Collection[str], p
 
 
 def bad_encoding(args: Namespace, progress: Progress) -> int:
-    for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
-        try:
-            with open(entry, encoding=args.encoding) as fr:
-                fr.read()
-        except UnicodeDecodeError:
-            print(f"{entry.path} failed to decode")
-        except PermissionError:
-            print(f"Cannot access {entry.path}")
-        else:
-            if args.verbose:
-                print(entry.path)
+    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+            try:
+                with open(entry, encoding=args.encoding) as fr:
+                    fr.read()
+            except UnicodeDecodeError:
+                fw.write(f"{entry.path} failed to decode\n")
+            except PermissionError:
+                fw.write(f"Cannot access {entry.path}\n")
+            else:
+                if args.verbose:
+                    fw.write(f"{entry.path}\n")
+    return 0
+
+
+def line_search_regex(args: Namespace, progress: Progress) -> int:
+    num = 0
+    with StdoutFile(
+        progress.progress.console, args.out, "xt", encoding="utf-8", newline="", highlight=False, soft_wrap=True
+    ) as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(["path", "line"])
+
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+            with open(entry.path, encoding=args.encoding, errors=args.errors) as fr:
+                for line in fr:
+                    m = args.pattern.search(line)
+                    if m:
+                        num += 1
+                        csvwriter.writerow([entry.path, line])
+                        if args.early_stop:
+                            break
+
+    logger.info("Found %d matches", num)
     return 0
 
 
 def all_zero(args: Namespace, progress: Progress) -> int:
-    for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
-        if entry.stat().st_size != 0:
-            with open(entry.path, "rb") as fr:
-                if is_all_byte(fr, b"\x00"):
-                    print(entry.path)
+    num = 0
+    with StdoutFile(
+        progress.progress.console, args.out, "xt", encoding="utf-8", newline="", highlight=False, soft_wrap=True
+    ) as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(["path", "filesize", "mtime"])
+
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+            stat = entry.stat()
+            if stat.st_size != 0:
+                with open(entry.path, "rb") as fr:
+                    if is_all_byte(fr, b"\x00"):
+                        num += 1
+                        csvwriter.writerow([entry.path, stat.st_size, stat.st_mtime_ns])
+
+    logger.info("Found %d all-zero files", num)
     return 0
 
 
 def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
-    for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
-        if entry.is_file():
-            try:
-                if is_sparse_or_compressed(entry):
-                    print(f"Sparse or compressed: {entry.path}")
-            except OSError as e:
-                logger.warning("Error reading filesize of <%s>: %s", entry.path, e)
+    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+            if entry.is_file():
+                try:
+                    if is_sparse_or_compressed(entry):
+                        fw.write(f"Sparse or compressed: {entry.path}\n")
+                except OSError as e:
+                    logger.warning("Error reading filesize of <%s>: %s", entry.path, e)
     return 0
-
-
-from enum import Enum
 
 
 class SymlinkModes(Enum):
@@ -80,26 +114,32 @@ class SymlinkModes(Enum):
 
 def symlinks(args: Namespace, progress: Progress) -> int:
     mode = SymlinkModes[args.mode]
-    for entry in p.track(
-        scandir_rec(
-            args.path, files=True, dirs=True, others=True, follow_symlinks=False, errorfunc=scandir_error_log_warning
-        ),
-        description="Processed {task.completed} files or directories",
-    ):
-        if entry.is_symlink():
-            try:
-                if mode == SymlinkModes.any:
-                    print(entry.path)
-                elif mode == SymlinkModes.valid:
-                    if os.path.exists(realpath(entry.path)):
-                        print(entry.path)
-                elif mode == SymlinkModes.invalid:
-                    if not os.path.exists(realpath(entry.path)):
-                        print(entry.path)
-                else:
-                    assert False
-            except Exception:
-                logger.exception("Error: %s", entry.path)
+    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+        for entry in p.track(
+            scandir_rec(
+                args.path,
+                files=True,
+                dirs=True,
+                others=True,
+                follow_symlinks=False,
+                errorfunc=scandir_error_log_warning,
+            ),
+            description="Processed {task.completed} files or directories",
+        ):
+            if entry.is_symlink():
+                try:
+                    if mode == SymlinkModes.any:
+                        fw.write(f"{entry.path}\n")
+                    elif mode == SymlinkModes.valid:
+                        if os.path.exists(realpath(entry.path)):
+                            fw.write(f"{entry.path}\n")
+                    elif mode == SymlinkModes.invalid:
+                        if not os.path.exists(realpath(entry.path)):
+                            fw.write(f"{entry.path}\n")
+                    else:
+                        assert False  # noqa: B011
+                except Exception:
+                    logger.exception("Error: %s", entry.path)
     return 0
 
 
@@ -107,6 +147,7 @@ def _find_parent_paths(path, file_name: Optional[str] = None, dir_name: Optional
     files = file_name is not None
     dirs = dir_name is not None
 
+    assert file_name or dir_name  # for mypy
     name = (file_name or dir_name).lower()
 
     for entry in scandir_rec(path, files=files, dirs=dirs, errorfunc=scandir_error_log_warning):
@@ -214,6 +255,30 @@ if __name__ == "__main__":
         help="Use DOS device path as the commands current directory. Doesn't support --shell and also might cause issues when the command calls other processes.",
     )
 
+    ALL_ERRORS = (
+        "strict",
+        "ignore",
+        "replace",
+        "surrogateescape",
+        "xmlcharrefreplace",
+        "backslashreplace",
+        "namereplace",
+    )
+
+    subparser_f = subparsers.add_parser(
+        "line-search-regex",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+        help="Search for files by matching each line by regex",
+        epilog="""Examples.
+Find cue files which contain catalog meta data:
+find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the action which doesn't allow other flags
+    )
+    subparser_f.set_defaults(func=line_search_regex)
+    subparser_f.add_argument("-p", "--pattern", type=re.compile, required=True, help="Pattern to match line")
+    subparser_f.add_argument("--early-stop", action="store_true", help="Stop processing file after first match")
+    subparser_f.add_argument("--encoding", default="utf-8", help="File encoding")
+    subparser_f.add_argument("--errors", choices=ALL_ERRORS, default="replace", help="File decoding error handling")
+
     parser.add_argument("path", type=is_dir, help="Path to scan for files")
     parser.add_argument(
         "-i",
@@ -247,10 +312,27 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z")
+    FORMAT = "%(message)s"
+
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG, format=FORMAT, handlers=[handler])
+    else:
+        logging.basicConfig(level=logging.INFO, format=FORMAT, handlers=[handler])
+
     if args.log:
         handler = logging.FileHandler(args.log, encoding="utf-8")
         logger.addHandler(handler)
 
     with RichProgress(*get_double_format_columns()) as progress:
         p = Progress(progress)
-        sys.exit(args.func(args, p))
+        try:
+            ret = args.func(args, p)
+        except FileExistsError as e:
+            ret = 2
+            logger.error(str(e))
+        except Exception:
+            ret = 2
+            logger.exception("Action failed")
+
+    sys.exit(ret)

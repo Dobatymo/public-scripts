@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import logging
 import os
 from pathlib import Path

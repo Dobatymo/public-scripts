@@ -31,7 +31,7 @@ if __name__ == "__main__":
             continue
 
         def info(i, length):
-            return str(inpath.name)[:60]
+            return str(inpath.name)[:60]  # noqa: B023
 
         try:
             consume(progress(iter_video(os.fspath(inpath)), extra_info_callback=info))

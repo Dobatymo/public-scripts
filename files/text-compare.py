@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 if __name__ == "__main__":
     from argparse import ArgumentParser
 

@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from genutility.xsl import xml_xslt_to_xhtml
 
 if __name__ == "__main__":

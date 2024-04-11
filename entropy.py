@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from genutility.file import file_byte_reader
 from genutility.math import discrete_distribution
 from genutility.numpy import shannon_entropy

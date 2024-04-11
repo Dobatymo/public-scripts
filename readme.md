@@ -1,6 +1,6 @@
 # Single scripts repository
 
-Each file represents a single purpose application.
+Requires Python 3.7+. Each file represents a single purpose application.
 
 ## files/file-part-compare
 

@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from genutility.file import iterfilelike
 from genutility.iter import iter_equal
 

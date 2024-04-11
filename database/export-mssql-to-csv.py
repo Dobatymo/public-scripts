@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import pypyodbc
 from genutility.sql import export_sql_to_csv
 

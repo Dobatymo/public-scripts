@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 import json
 import sys
 from argparse import ArgumentParser

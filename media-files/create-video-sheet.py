@@ -1,7 +1,6 @@
-from __future__ import generator_stop
-
 import logging
 import platform
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from datetime import timedelta
 from fractions import Fraction
 from math import ceil, floor
@@ -9,13 +8,14 @@ from os import fspath
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Tuple
 
-from genutility.filesystem import mdatetime
+from genutility.args import abs_path, existing_path, in_range, suffix
+from genutility.filesystem import fileextensions, mdatetime
 from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
 from genutility.math import byte2size_str
 from genutility.pillow import multiline_textsize
-from genutility.rich import Progress
+from genutility.rich import MarkdownHighligher, Progress
 from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
 from PIL import Image, ImageDraw, ImageFont
 from rich.logging import RichHandler
@@ -222,14 +222,14 @@ def create_sheet(
     )
 
 
-def main(
+def create_sheet_cli(
     inpath,
     outpath,
     cols: int,
     rows: Optional[int],
     seconds: Optional[float],
     args: Dict,
-    progress,
+    progress: Progress,
     backend: Optional[str] = None,
     dry: bool = False,
 ):
@@ -239,11 +239,11 @@ def main(
         try:
             CvVideo.import_backend()
             BackendCls = CvVideo
-            logger.warning("Using cv2 backend")
+            logger.debug("Using cv2 backend")
         except ImportError:
             AvVideo.import_backend()
             BackendCls = AvVideo
-            logger.warning("Using av backend")
+            logger.debug("Using av backend")
     elif backend == "av":
         AvVideo.import_backend()
         BackendCls = AvVideo
@@ -297,12 +297,7 @@ def main(
             sheet.save(outpath, quality=args["quality"])
 
 
-if __name__ == "__main__":
-    from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
-
-    from genutility.args import abs_path, existing_path, in_range, suffix
-    from genutility.filesystem import fileextensions
-
+def main():
     parser = ArgumentParser(
         description="Create video sheet / grid of thumbnails from video file.",
         formatter_class=ArgumentDefaultsHelpFormatter,
@@ -396,7 +391,7 @@ if __name__ == "__main__":
         "quality": args.quality,
     }
 
-    handler = RichHandler()
+    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=MarkdownHighligher())
     FORMAT = "%(message)s"
 
     if args.verbose:
@@ -425,7 +420,7 @@ if __name__ == "__main__":
 
         with RichProgress() as p:
             progress = Progress(p)
-            main(args.inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry)
+            create_sheet_cli(args.inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry)
 
     elif args.inpath.is_dir():
         video_suffixes = {"." + ext for ext in fileextensions.video}
@@ -457,7 +452,9 @@ if __name__ == "__main__":
 
                     # filerelpath = inpath.relative_to(args.inpath)
                     try:
-                        main(inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry)
+                        create_sheet_cli(
+                            inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry
+                        )
                     except NoGoodFrame:
                         logger.warning("Skipping broken file %s", inpath)
                     except Exception:
@@ -467,3 +464,10 @@ if __name__ == "__main__":
 
     else:
         parser.error("inpath is neither file nor directory")
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("KeyboardInterrupt")

@@ -1,5 +1,3 @@
-from __future__ import generator_stop
-
 from argparse import ArgumentParser
 from sys import exit
 
