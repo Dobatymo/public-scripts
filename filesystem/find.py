@@ -6,13 +6,14 @@ import re
 import subprocess
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from enum import Enum
+from fnmatch import fnmatch
 from pathlib import Path
-from typing import Collection, Iterator, Optional
+from typing import Callable, Collection, Iterator, Optional
 
 from genutility._files import to_dos_path
 from genutility.args import is_dir, suffix_lower
 from genutility.file import is_all_byte
-from genutility.filesystem import PathType, scandir_error_log_warning, scandir_ext, scandir_rec
+from genutility.filesystem import PathType, scandir_counts, scandir_error_log_warning, scandir_ext, scandir_rec
 from genutility.os import realpath
 from genutility.rich import Progress, StdoutFile, get_double_format_columns
 from genutility.win.file import GetCompressedFileSize
@@ -139,7 +140,7 @@ def symlinks(args: Namespace, progress: Progress) -> int:
                     else:
                         assert False  # noqa: B011
                 except Exception:
-                    logger.exception("Error: %s", entry.path)
+                    logger.exception("Error: %r", entry.path)
     return 0
 
 
@@ -193,9 +194,30 @@ def find_and_run(args: Namespace, progress: Progress) -> int:
                 stderr=subprocess.STDOUT,
             )
         except subprocess.CalledProcessError as e:
-            logger.error("Calling `%s` in <%s> failed: %s", e.cmd, path, force_decode(e.output, path))
+            logger.error("Calling %r in <%s> failed: %s", e.cmd, path, force_decode(e.output, path))
 
     return 0
+
+
+def _find_empty_dirs(basepath: Path, pattern: str = "*") -> Iterator[str]:
+    for entry, counts in scandir_counts(basepath, files=False, others=False, onerror=scandir_error_log_warning):
+        assert counts is not None  # because `files=False, others=False` above
+        if counts.null():
+            if fnmatch(entry.name, pattern):
+                yield entry.path
+
+
+def empty_dirs(args: Namespace, progress: Progress) -> int:
+    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+        for path in p.track(_find_empty_dirs(args.path, args.pattern)):
+            if args.remove:
+                try:
+                    os.rmdir(path)
+                    logging.info("Removed %r", path)
+                except OSError as e:
+                    logging.warning("Removing %r failed: %s", path, e)
+            else:
+                fw.write(f"{path}\n")
 
 
 if __name__ == "__main__":
@@ -279,7 +301,16 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
     subparser_f.add_argument("--encoding", default="utf-8", help="File encoding")
     subparser_f.add_argument("--errors", choices=ALL_ERRORS, default="replace", help="File decoding error handling")
 
-    parser.add_argument("path", type=is_dir, help="Path to scan for files")
+    subparser_g = subparsers.add_parser(
+        "empty-dirs",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+        help="Find empty directories",
+    )
+    subparser_g.set_defaults(func=empty_dirs)
+    subparser_g.add_argument("-p", "--pattern", default="*", help="fnmatch pattern")
+    subparser_g.add_argument("--remove", action="store_true", help="Remove matching empty directories")
+
+    parser.add_argument("path", type=is_dir, help="Path to scan for files or directories")
     parser.add_argument(
         "-i",
         "--include-extensions",
