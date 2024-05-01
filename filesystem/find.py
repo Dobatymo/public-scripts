@@ -5,16 +5,18 @@ import os.path
 import re
 import subprocess
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
-from enum import Enum
+from enum import Flag, auto
 from fnmatch import fnmatch
+from functools import reduce
+from operator import or_
 from pathlib import Path
-from typing import Callable, Collection, Iterator, Optional
+from typing import Collection, Iterator, Optional
 
 from genutility._files import to_dos_path
 from genutility.args import is_dir, suffix_lower
 from genutility.file import is_all_byte
 from genutility.filesystem import PathType, scandir_counts, scandir_error_log_warning, scandir_ext, scandir_rec
-from genutility.os import realpath
+from genutility.os import islink, realpath
 from genutility.rich import Progress, StdoutFile, get_double_format_columns
 from genutility.win.file import GetCompressedFileSize
 from rich.logging import RichHandler
@@ -107,14 +109,24 @@ def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
     return 0
 
 
-class SymlinkModes(Enum):
-    any = 0
-    valid = 1
-    invalid = 2
+class LinkModes(Flag):
+    symlink = auto()
+    junction = auto()
+    valid = auto()
+    invalid = auto()
 
 
 def symlinks(args: Namespace, progress: Progress) -> int:
-    mode = SymlinkModes[args.mode]
+    mode = reduce(or_, [LinkModes[mode] for mode in args.modes])
+
+    if LinkModes.symlink not in mode and LinkModes.junction not in mode:
+        mode |= LinkModes.symlink
+        mode |= LinkModes.junction
+
+    if LinkModes.valid not in mode and LinkModes.invalid not in mode:
+        mode |= LinkModes.valid
+        mode |= LinkModes.invalid
+
     with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
         for entry in p.track(
             scandir_rec(
@@ -122,25 +134,38 @@ def symlinks(args: Namespace, progress: Progress) -> int:
                 files=True,
                 dirs=True,
                 others=True,
+                rec=True,
                 follow_symlinks=False,
                 errorfunc=scandir_error_log_warning,
             ),
             description="Processed {task.completed} files or directories",
         ):
             if entry.is_symlink():
-                try:
-                    if mode == SymlinkModes.any:
+                is_symlink = True
+                is_junction = False
+            elif islink(entry):
+                is_symlink = False
+                is_junction = True
+            else:
+                continue
+
+            try:
+                print_symlink = LinkModes.symlink in mode
+                print_junction = LinkModes.junction in mode
+                if (print_symlink == is_symlink) or (print_junction == is_junction):
+                    if LinkModes.valid in mode and LinkModes.invalid in mode:
                         fw.write(f"{entry.path}\n")
-                    elif mode == SymlinkModes.valid:
+                    elif LinkModes.valid in mode:
                         if os.path.exists(realpath(entry.path)):
                             fw.write(f"{entry.path}\n")
-                    elif mode == SymlinkModes.invalid:
+                    elif LinkModes.invalid in mode:
                         if not os.path.exists(realpath(entry.path)):
                             fw.write(f"{entry.path}\n")
                     else:
                         assert False  # noqa: B011
-                except Exception:
-                    logger.exception("Error: %r", entry.path)
+
+            except Exception:
+                logger.exception("Error: %r", entry.path)
     return 0
 
 
@@ -255,9 +280,10 @@ if __name__ == "__main__":
     )
     subparser_d.set_defaults(func=symlinks)
     subparser_d.add_argument(
-        "--mode",
-        choices=tuple(e.name for e in SymlinkModes),
-        default="any",
+        "--modes",
+        nargs="+",
+        choices=tuple(e.name for e in LinkModes),
+        default=tuple(e.name for e in LinkModes),
         help="Only display certain types of symlinks",
     )
 
