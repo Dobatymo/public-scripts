@@ -25,6 +25,18 @@ from rich.progress import Progress as RichProgress
 logger = logging.getLogger(__name__)
 
 
+class StdoutFileNoStyle(StdoutFile):
+    def __init__(self, *args, **kwargs) -> None:
+        _kwargs = dict(
+            encoding="utf-8",
+            markup=False,
+            highlight=False,
+            soft_wrap=True,
+        )
+        _kwargs.update(kwargs)
+        super().__init__(*args, **_kwargs)
+
+
 def is_sparse_or_compressed(entry: os.DirEntry) -> bool:
     return GetCompressedFileSize(entry.path) < entry.stat().st_size
 
@@ -40,7 +52,7 @@ def _files(path: PathType, include: Collection[str], exclude: Collection[str], p
 
 
 def bad_encoding(args: Namespace, progress: Progress) -> int:
-    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
         for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
             try:
                 with open(entry, encoding=args.encoding) as fr:
@@ -57,9 +69,7 @@ def bad_encoding(args: Namespace, progress: Progress) -> int:
 
 def line_search_regex(args: Namespace, progress: Progress) -> int:
     num = 0
-    with StdoutFile(
-        progress.progress.console, args.out, "xt", encoding="utf-8", newline="", highlight=False, soft_wrap=True
-    ) as csvfile:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt", newline="") as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "line"])
 
@@ -79,9 +89,7 @@ def line_search_regex(args: Namespace, progress: Progress) -> int:
 
 def all_zero(args: Namespace, progress: Progress) -> int:
     num = 0
-    with StdoutFile(
-        progress.progress.console, args.out, "xt", encoding="utf-8", newline="", highlight=False, soft_wrap=True
-    ) as csvfile:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt", newline="") as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "filesize", "mtime"])
 
@@ -98,7 +106,7 @@ def all_zero(args: Namespace, progress: Progress) -> int:
 
 
 def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
-    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
         for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
             if entry.is_file():
                 try:
@@ -127,7 +135,7 @@ def symlinks(args: Namespace, progress: Progress) -> int:
         mode |= LinkModes.valid
         mode |= LinkModes.invalid
 
-    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
         for entry in p.track(
             scandir_rec(
                 args.path,
@@ -225,7 +233,9 @@ def find_and_run(args: Namespace, progress: Progress) -> int:
 
 
 def _find_empty_dirs(basepath: Path, pattern: str = "*") -> Iterator[str]:
-    for entry, counts in scandir_counts(basepath, files=False, others=False, onerror=scandir_error_log_warning):
+    for entry, counts in scandir_counts(
+        basepath, files=False, others=False, follow_symlinks=False, onerror=scandir_error_log_warning
+    ):
         assert counts is not None  # because `files=False, others=False` above
         if counts.null():
             if fnmatch(entry.name, pattern):
@@ -233,7 +243,7 @@ def _find_empty_dirs(basepath: Path, pattern: str = "*") -> Iterator[str]:
 
 
 def empty_dirs(args: Namespace, progress: Progress) -> int:
-    with StdoutFile(progress.progress.console, args.out, "xt", encoding="utf-8", highlight=False, soft_wrap=True) as fw:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
         for path in p.track(_find_empty_dirs(args.path, args.pattern)):
             if args.remove:
                 try:

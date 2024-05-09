@@ -14,7 +14,6 @@ DEFAULT_CACHEFILE = "microsoft-hashes.json"
 
 
 class BackendBase:
-
     @classmethod
     def hash_to_page_url(cls, hex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         raise NotImplementedError
@@ -25,7 +24,6 @@ class BackendBase:
 
 
 class HeidocBackend(BackendBase):
-
     @classmethod
     def hash_to_page_url(cls, hex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         search_url = "https://www.heidoc.net/php/myvsdump_search.php"
@@ -63,7 +61,6 @@ class HeidocBackend(BackendBase):
 
 
 class AdguardBackend(BackendBase):
-
     @classmethod
     def hash_to_page_url(cls, hex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         search_url = "https://files.rg-adguard.net/search"
