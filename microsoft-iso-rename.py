@@ -15,7 +15,7 @@ DEFAULT_CACHEFILE = "microsoft-hashes.json"
 
 class BackendBase:
     @classmethod
-    def hash_to_page_url(cls, hex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
+    def hash_to_page_url(cls, hashhex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         raise NotImplementedError
 
     @classmethod
@@ -25,10 +25,10 @@ class BackendBase:
 
 class HeidocBackend(BackendBase):
     @classmethod
-    def hash_to_page_url(cls, hex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
+    def hash_to_page_url(cls, hashhex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         search_url = "https://www.heidoc.net/php/myvsdump_search.php"
         params = {
-            "sha1": hex,
+            "sha1": hashhex,
             "mindate": "1990-01-01T00:00",
             "maxdate": "2030-01-01T00:00",
         }
@@ -62,10 +62,10 @@ class HeidocBackend(BackendBase):
 
 class AdguardBackend(BackendBase):
     @classmethod
-    def hash_to_page_url(cls, hex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
+    def hash_to_page_url(cls, hashhex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         search_url = "https://files.rg-adguard.net/search"
         data = {
-            "search": hex,
+            "search": hashhex,
         }
         r = requests.post(search_url, data=data, timeout=timeout)
         r.raise_for_status()
@@ -102,7 +102,8 @@ class AdguardBackend(BackendBase):
             if left == "File:":
                 return right
 
-        raise AssertionError(f"Filename not found on <{page_url}>")
+        msg = f"Filename not found on <{page_url}>"
+        raise AssertionError(msg)
 
 
 class MicrosoftHashes:
@@ -130,20 +131,20 @@ class MicrosoftHashes:
         with sopen(self.cachefile, "wt", encoding="utf-8") as fw:
             json.dump(self.hashes, fw, ensure_ascii=False, indent="\t")
 
-    def get_filename(self, hex: str, retry: bool) -> Optional[str]:
-        found = hex in self.hashes
-        filename = self.hashes.get(hex)
+    def get_filename(self, hashhex: str, retry: bool) -> Optional[str]:
+        found = hashhex in self.hashes
+        filename = self.hashes.get(hashhex)
 
         if not found or (filename is None and retry):
             for backend in self.backends:
-                url = backend.hash_to_page_url(hex)
+                url = backend.hash_to_page_url(hashhex)
                 logging.debug("[%s] URL: %s", type(backend).__name__, url)
                 if url:
                     filename = backend.page_url_to_filename(url)
                     break
             else:
                 filename = None
-            self.hashes[hex] = filename
+            self.hashes[hashhex] = filename
         return filename
 
     def __enter__(self) -> Self:
@@ -160,19 +161,19 @@ def iter_hashes(basepath: Path, recursive: bool = False) -> Iterator[Tuple[Path,
         globfunc = basepath.glob
 
     for path in globfunc("*.iso"):
-        hex = sha1_hash_file(path).hexdigest()
-        yield path, hex
+        hashhex = sha1_hash_file(path).hexdigest()
+        yield path, hashhex
 
 
 def rename_all_in_folder(basepath: Path, do: bool, retry: bool, move_to_subdir: bool, recursive: bool = False) -> None:
     valid = "valid"
 
     with MicrosoftHashes() as hashes:
-        for path, hex in iter_hashes(basepath, recursive):
-            logging.debug("<%s> [%s]", path, hex)
-            filename = hashes.get_filename(hex, retry)
+        for path, hashhex in iter_hashes(basepath, recursive):
+            logging.debug("<%s> [%s]", path, hashhex)
+            filename = hashes.get_filename(hashhex, retry)
             if not filename:
-                print(f"No filename found for <{path}> [{hex}]")
+                print(f"No filename found for <{path}> [{hashhex}]")
                 continue
 
             if move_to_subdir and path.parent.name != valid:
@@ -181,10 +182,10 @@ def rename_all_in_folder(basepath: Path, do: bool, retry: bool, move_to_subdir: 
                 newpath = path.parent / filename
 
             if path == newpath:
-                print(f"Already correct filename <{path}> [{hex}]")
+                print(f"Already correct filename <{path}> [{hashhex}]")
                 continue
 
-            print(f"Renaming <{path}> to <{newpath}> [{hex}]")
+            print(f"Renaming <{path}> to <{newpath}> [{hashhex}]")
             if do:
                 newpath.parent.mkdir(parents=True, exist_ok=True)
                 path.rename(newpath)
@@ -196,7 +197,7 @@ if __name__ == "__main__":
     from genutility.args import is_dir
 
     parser = ArgumentParser()
-    parser.add_argument("path", type=is_dir, default=Path("."))
+    parser.add_argument("path", type=is_dir, default=Path())
     parser.add_argument("-r", "--recursive", action="store_true")
     parser.add_argument("--move-to-subdir", action="store_true")
     parser.add_argument("--do", action="store_true")

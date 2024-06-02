@@ -1,8 +1,26 @@
+[project]
+readme = "readme.md"
+requires-python = ">=3.7"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+
 [tool.black]
 line-length = 120
 
 [tool.ruff]
 line-length = 120
+
+lint.extend-select = [
+  "B",
+  "I",
+]
 
 [tool.isort]
 profile = "black"
@@ -16,17 +34,6 @@ warn_unused_ignores = true
 warn_unreachable = true
 
 [tool.bandit]
-skips = ["B101"]
-
-[project]
-readme = "readme.md"
-requires-python = ">= 3.7"
-classifiers = [
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.7",
-  "Programming Language :: Python :: 3.8",
-  "Programming Language :: Python :: 3.9",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
+skips = [
+  "B101",
 ]

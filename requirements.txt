@@ -12,3 +12,4 @@ pypyodbc
 pywin32
 requests
 rich
+send2trash
