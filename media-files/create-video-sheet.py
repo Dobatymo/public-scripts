@@ -15,7 +15,7 @@ from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
 from genutility.math import byte2size_str
 from genutility.pillow import multiline_textsize
-from genutility.rich import MarkdownHighligher, Progress
+from genutility.rich import MarkdownHighlighter, Progress
 from genutility.videofile import AvVideo, CvVideo, NoGoodFrame
 from PIL import Image, ImageDraw, ImageFont
 from rich.logging import RichHandler
@@ -108,12 +108,7 @@ def create_header(path: Path, meta: Dict, template: Optional[str] = None) -> str
 
 
 def calc_sheet_size(
-    cols: int,
-    rows: int,
-    thumb_width: int,
-    thumb_height: int,
-    pad_width: int,
-    pad_height: int,
+    cols: int, rows: int, thumb_width: int, thumb_height: int, pad_width: int, pad_height: int
 ) -> Tuple[int, int]:
     sheet_width = thumb_width * cols + pad_width * (cols + 1)
     sheet_height = thumb_height * rows + pad_height * (rows + 1)
@@ -307,10 +302,7 @@ def main():
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debugging output")
     parser.add_argument("-w", "--overwrite", action="store_true", help="Overwrite existing files")
     parser.add_argument(
-        "-r",
-        "--recursive",
-        action="store_true",
-        help="Recurse into subfolders if input is a directory.",
+        "-r", "--recursive", action="store_true", help="Recurse into subfolders if input is a directory."
     )
     parser.add_argument(
         "-f",
@@ -329,21 +321,10 @@ def main():
         type=int,
         help="Create sheet with C columns and R rows. Thumbnails will be equally spaced timewise.",
     )
-    group.add_argument(
-        "-s",
-        "--seconds",
-        metavar="N",
-        type=float,
-        help="Grab a video frame every N seconds",
-    )
+    group.add_argument("-s", "--seconds", metavar="N", type=float, help="Grab a video frame every N seconds")
     parser.add_argument("--cols", metavar="C", type=int, help="Number of columns")
 
-    parser.add_argument(
-        "-e",
-        "--header",
-        action="store_true",
-        help="Add file meta information to the sheet.",
-    )
+    parser.add_argument("-e", "--header", action="store_true", help="Add file meta information to the sheet.")
     parser.add_argument(
         "--thumbsize",
         nargs=2,
@@ -353,12 +334,7 @@ def main():
         help="Maximum dimensions of thumbnails",
     )
     parser.add_argument(
-        "--padding",
-        nargs=2,
-        metavar=("W", "H"),
-        type=int,
-        default=DEFAULT_PADDING,
-        help="Padding between thumbnails",
+        "--padding", nargs=2, metavar=("W", "H"), type=int, default=DEFAULT_PADDING, help="Padding between thumbnails"
     )
     parser.add_argument("--background", type=str, default="black", help="Background color")
     parser.add_argument("--textcolor", type=str, default="white", help="Text color")
@@ -366,10 +342,7 @@ def main():
     parser.add_argument("--fontfile", default=DEFAULT_FONTFILE, help="Path to truetype font file")
     parser.add_argument("--fontsize", type=int, default=DEFAULT_FONTSIZE, help="Fontsize")
     parser.add_argument(
-        "--quality",
-        type=in_range(1, 101),
-        default=80,
-        help="JPEG output quality, ignored if outpath is not .jpg",
+        "--quality", type=in_range(1, 101), default=80, help="JPEG output quality, ignored if outpath is not .jpg"
     )
     parser.add_argument("-d", "--dry", action="store_true", help="If set, no files are actually created")
     parser.add_argument(
@@ -391,7 +364,7 @@ def main():
         "quality": args.quality,
     }
 
-    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=MarkdownHighligher())
+    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=MarkdownHighlighter())
     FORMAT = "%(message)s"
 
     if args.verbose:
@@ -437,7 +410,7 @@ def main():
                     continue
 
                 if inpath.suffix.lower() not in video_suffixes:
-                    logger.debug("Skipping non-video file %s", inpath)
+                    logger.debug("Skipping non-video file `%s`", inpath)
                     continue
 
                 if args.outpath is None:
@@ -448,7 +421,7 @@ def main():
                     outpath = outpath / Path(inpath.name).with_suffix(args.format)
 
                 if args.overwrite or not outpath.exists():
-                    logger.info("Processing %s", inpath)
+                    logger.info("Processing `%s`", inpath)
 
                     # filerelpath = inpath.relative_to(args.inpath)
                     try:
@@ -456,11 +429,11 @@ def main():
                             inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry
                         )
                     except NoGoodFrame:
-                        logger.warning("Skipping broken file %s", inpath)
+                        logger.warning("Skipping broken file `%s`", inpath)
                     except Exception:
-                        logger.exception("Skipping %s", inpath)
+                        logger.exception("Skipping `%s`", inpath)
                 else:
-                    logger.info("Skipping existing file %s", inpath)
+                    logger.info("Skipping existing file `%s`", inpath)
 
     else:
         parser.error("inpath is neither file nor directory")

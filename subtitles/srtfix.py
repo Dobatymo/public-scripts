@@ -36,11 +36,7 @@ if __name__ == "__main__":
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        "--fps",
-        metavar=("FROM-FPS", "TO-FPS"),
-        nargs=2,
-        type=float,
-        help="Change the rate from x fps to y fps",
+        "--fps", metavar=("FROM-FPS", "TO-FPS"), nargs=2, type=float, help="Change the rate from x fps to y fps"
     )
     group.add_argument("--delay", type=float, help="Delay by +x or -x seconds")
 

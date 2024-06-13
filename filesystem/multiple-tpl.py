@@ -43,26 +43,10 @@ For example this can be used to create one AviSynth script file per video file."
     parser.add_argument("inpath", type=is_dir, help="Directory with files.")
     parser.add_argument("tplpath", type=is_file, help="Path to template file.")
     parser.add_argument("outsuffix", type=suffix, help="Suffix of created files.")
+    parser.add_argument("--outpath", type=is_dir, default=Path("."), help="Directory where created files are placed.")
     parser.add_argument(
-        "--outpath",
-        type=is_dir,
-        default=Path("."),
-        help="Directory where created files are placed.",
-    )
-    parser.add_argument(
-        "--suffixes",
-        metavar="SUFFIX",
-        nargs="+",
-        default=[],
-        type=suffix,
-        help="Extensions to filter for.",
+        "--suffixes", metavar="SUFFIX", nargs="+", default=[], type=suffix, help="Extensions to filter for."
     )
     args = parser.parse_args()
 
-    main(
-        args.inpath,
-        args.tplpath,
-        args.outpath,
-        args.outsuffix,
-        frozenset(args.suffixes),
-    )
+    main(args.inpath, args.tplpath, args.outpath, args.outsuffix, frozenset(args.suffixes))

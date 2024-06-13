@@ -1,16 +1,17 @@
 import errno
 import logging
 import os
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, RawTextHelpFormatter
 from io import SEEK_CUR
 from shutil import disk_usage
+from textwrap import dedent
 from typing import BinaryIO, Iterator, Optional
 
 from cwinsdk.shared.winerror import ERROR_INVALID_PARAMETER
 from genutility.args import multiple_of
 from genutility.file import FILE_IO_BUFFER_SIZE, OptionalWriteOnlyFile
 from genutility.iter import progressdata
-from genutility.win.device import Drive, Volume, is_volume_or_drive
+from genutility.win.device import Drive, Volume
 
 DEFAULT_SECTOR_SIZE = 512
 
@@ -167,7 +168,7 @@ def blockfileiterignore(
 
     try:
         with Drive.from_file(fr) as d:
-            sector_size = d.get_alignment()["BytesPerPhysicalSector"]
+            sector_size = d.sqp_alignment()["BytesPerPhysicalSector"]
     except OSError:
         sector_size = DEFAULT_SECTOR_SIZE
 
@@ -198,25 +199,37 @@ def blockfileiterignore(
         fr.close()
 
 
+class HelpFormatter(RawTextHelpFormatter, ArgumentDefaultsHelpFormatter):
+    pass
+
+
 def main():
     DEFAULT_BLOCKSIZE = 512 * 2048 * 16
 
-    parser = ArgumentParser(description="Read raw volume", formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument("volume", type=is_volume_or_drive, help="Drive or Volume")
+    parser = ArgumentParser(
+        description="Read raw volume, disk or device to verify the contents or create an image.",
+        formatter_class=HelpFormatter,
+    )
+    parser.add_argument("volume", type=str, help=dedent(Volume.from_raw_path.__doc__))
     group_seek = parser.add_mutually_exclusive_group(required=False)
     group_seek.add_argument(
         "--seek-byte", type=multiple_of(DEFAULT_SECTOR_SIZE), default=None, help="Seek to byte number"
     )
     group_seek.add_argument("--seek-sector", type=int, default=None, help="Seek to sector number")
-    parser.add_argument("--out", type=str, default=None, help="outfile")
-    parser.add_argument("--bs", type=int, default=DEFAULT_BLOCKSIZE, help="blocksize")
+    parser.add_argument(
+        "--out",
+        type=str,
+        default=None,
+        help="Create a image file of the volume or disk content. Use .gz or .bz2 file extension to store it compressed.",
+    )
+    parser.add_argument("--bs", type=int, default=DEFAULT_BLOCKSIZE, help="Read blocksize")
     parser.add_argument(
         "--compresslevel", type=int, default=9, help="Compression level. Only valid for gzip and bz2 files."
     )
     parser.add_argument(
         "--extended",
         action="store_true",
-        help="Read the data between the end of the volume and the end of the partition",
+        help="Read the data between the end of the volume and the end of the partition. Can be used for volumes, not drives.",
     )
     args = parser.parse_args()
 
@@ -226,6 +239,8 @@ def main():
         seek = args.seek_byte
     elif args.seek_sector:
         seek = args.seek_sector * DEFAULT_SECTOR_SIZE
+    else:
+        seek = None
 
     try:
         with OptionalWriteOnlyFile(args.out, compresslevel=args.compresslevel) as fw:
@@ -235,3 +250,7 @@ def main():
                 fw.write(data)
     except AdminNeeded:
         print("Volume does not exist or administrator privileges needed!")
+
+
+if __name__ == "__main__":
+    main()

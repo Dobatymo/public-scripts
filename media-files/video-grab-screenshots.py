@@ -25,19 +25,10 @@ def main():
     )
     parser.add_argument("-w", "--overwrite", action="store_true", help="Overwrite existing files")
     parser.add_argument(
-        "-r",
-        "--recursive",
-        action="store_true",
-        help="Recurse into subfolders if input is a directory.",
+        "-r", "--recursive", action="store_true", help="Recurse into subfolders if input is a directory."
     )
 
-    parser.add_argument(
-        "--pos",
-        nargs="*",
-        default=[0.5],
-        type=between(0, 1),
-        help="List of of file position ratios",
-    )
+    parser.add_argument("--pos", nargs="*", default=[0.5], type=between(0, 1), help="List of of file position ratios")
     parser.add_argument("--backend", choices=("av", "cv"), default="cv")
     args = parser.parse_args()
 

@@ -5,6 +5,7 @@ import os.path
 import re
 import subprocess
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+from collections import defaultdict
 from enum import Flag, auto
 from fnmatch import fnmatch
 from functools import reduce
@@ -13,28 +14,17 @@ from pathlib import Path
 from typing import Collection, Iterator, Optional
 
 from genutility._files import to_dos_path
-from genutility.args import is_dir, suffix_lower
-from genutility.file import is_all_byte
+from genutility.args import ascii, base64, is_dir, suffix_lower
+from genutility.file import is_all_byte, read_file
 from genutility.filesystem import PathType, scandir_counts, scandir_error_log_warning, scandir_ext, scandir_rec
 from genutility.os import islink, realpath
-from genutility.rich import Progress, StdoutFile, get_double_format_columns
+from genutility.rich import MarkdownHighlighter, Progress, StdoutFileNoStyle, get_double_format_columns
 from genutility.win.file import GetCompressedFileSize
 from rich.logging import RichHandler
 from rich.progress import Progress as RichProgress
+from send2trash import send2trash
 
 logger = logging.getLogger(__name__)
-
-
-class StdoutFileNoStyle(StdoutFile):
-    def __init__(self, *args, **kwargs) -> None:
-        _kwargs = dict(
-            encoding="utf-8",
-            markup=False,
-            highlight=False,
-            soft_wrap=True,
-        )
-        _kwargs.update(kwargs)
-        super().__init__(*args, **_kwargs)
 
 
 def is_sparse_or_compressed(entry: os.DirEntry) -> bool:
@@ -105,6 +95,22 @@ def all_zero(args: Namespace, progress: Progress) -> int:
     return 0
 
 
+def has_filesize(args: Namespace, progress: Progress) -> int:
+    num = 0
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt", newline="") as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(["path", "filesize", "mtime"])
+
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+            stat = entry.stat()
+            if stat.st_size == args.size:
+                num += 1
+                csvwriter.writerow([entry.path, stat.st_size, stat.st_mtime_ns])
+
+    logger.info("Found %d files with size %d", num, args.size)
+    return 0
+
+
 def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
         for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
@@ -113,7 +119,7 @@ def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
                     if is_sparse_or_compressed(entry):
                         fw.write(f"Sparse or compressed: {entry.path}\n")
                 except OSError as e:
-                    logger.warning("Error reading filesize of <%s>: %s", entry.path, e)
+                    logger.warning("Error reading filesize of `%s`: %s", entry.path, e)
     return 0
 
 
@@ -173,7 +179,7 @@ def symlinks(args: Namespace, progress: Progress) -> int:
                         assert False  # noqa: B011
 
             except Exception:
-                logger.exception("Error: %r", entry.path)
+                logger.exception("Error in `%s`", entry.path)
     return 0
 
 
@@ -195,7 +201,7 @@ def force_decode(data: bytes, path: str) -> str:
     try:
         return data.decode("utf-8")
     except UnicodeDecodeError:
-        logger.warning("Failed to decode output for <%s> using utf-8", path)
+        logger.warning("Failed to decode output for `%s` using utf-8", path)
         try:
             return data.decode()  # try default encoding
         except UnicodeDecodeError:
@@ -220,14 +226,9 @@ def find_and_run(args: Namespace, progress: Progress) -> int:
             path = to_dos_path(path)
 
         try:
-            subprocess.check_output(
-                args.command,
-                shell=args.shell,
-                cwd=path,
-                stderr=subprocess.STDOUT,
-            )
+            subprocess.check_output(args.command, shell=args.shell, cwd=path, stderr=subprocess.STDOUT)
         except subprocess.CalledProcessError as e:
-            logger.error("Calling %r in <%s> failed: %s", e.cmd, path, force_decode(e.output, path))
+            logger.error("Calling `%s` in `%s` failed: %s", e.cmd, path, force_decode(e.output, path))
 
     return 0
 
@@ -248,11 +249,67 @@ def empty_dirs(args: Namespace, progress: Progress) -> int:
             if args.remove:
                 try:
                     os.rmdir(path)
-                    logging.info("Removed %r", path)
+                    logger.info("Removed `%s`", path)
                 except OSError as e:
-                    logging.warning("Removing %r failed: %s", path, e)
+                    logger.warning("Removing `%s` failed: %s", path, e)
             else:
                 fw.write(f"{path}\n")
+
+
+def long_paths(args: Namespace, progress: Progress) -> int:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt", newline="") as csvfile:
+        csvwriter = csv.writer(csvfile)
+        csvwriter.writerow(["length", "relpath"])
+        for entry in p.track(scandir_rec(args.path, files=True, dirs=True, rec=True, relative=True)):
+            if len(entry.relpath) >= args.length:
+                csvwriter.writerow([len(entry.relpath), entry.relpath])
+
+
+def exact_content_match(args: Namespace, progress: Progress) -> int:
+    content = args.base64_content or args.ascii_content.encode("ascii")
+
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+            path = entry.path
+            if entry.stat().st_size == len(content):
+                data = read_file(path, "rb")
+                if data == content:
+                    if args.trash:
+                        try:
+                            send2trash(path)
+                            logger.info("Trashed `%s`", path)
+                        except OSError as e:
+                            logger.warning("Trashing `%s` failed: %s", path, e)
+                    else:
+                        fw.write(f"{path}\n")
+
+
+def transformed_dups(args: Namespace, progress: Progress) -> int:
+    if bool(args.sub_pattern) != bool(args.sub_replacement):
+        raise ValueError("Both pattern and replacement or neither must be given")
+
+    logger.info("Using pattern `%s` and repl `%s`", args.sub_pattern.pattern, args.sub_replacement)
+
+    out = defaultdict(list)
+
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+            key = {"path": entry.path, "name": entry.name, "size": entry.stat().st_size}[args.key]
+
+            if args.sub_pattern:
+                assert isinstance(key, str)
+                new_key, n_subs = args.sub_pattern.subn(args.sub_replacement, key)
+                if n_subs > 0:
+                    out[new_key].append(entry.path)
+            else:
+                out[key].append(entry.path)
+
+        out = {key: paths for key, paths in out.items() if len(paths) >= args.at_least}
+        for key, paths in sorted(out.items(), key=lambda pair: len(pair[1]), reverse=True):
+            fw.write(f"{len(paths)}\t{key!r}\n")
+            for path in paths:
+                fw.write(f"{path}\n")
+            fw.write("\n")
 
 
 if __name__ == "__main__":
@@ -283,11 +340,7 @@ if __name__ == "__main__":
     )
     subparser_c.set_defaults(func=sparse_or_compressed)
 
-    subparser_d = subparsers.add_parser(
-        "symlinks",
-        formatter_class=ArgumentDefaultsHelpFormatter,
-        help="Find symlinks",
-    )
+    subparser_d = subparsers.add_parser("symlinks", formatter_class=ArgumentDefaultsHelpFormatter, help="Find symlinks")
     subparser_d.set_defaults(func=symlinks)
     subparser_d.add_argument(
         "--modes",
@@ -338,13 +391,49 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
     subparser_f.add_argument("--errors", choices=ALL_ERRORS, default="replace", help="File decoding error handling")
 
     subparser_g = subparsers.add_parser(
-        "empty-dirs",
-        formatter_class=ArgumentDefaultsHelpFormatter,
-        help="Find empty directories",
+        "empty-dirs", formatter_class=ArgumentDefaultsHelpFormatter, help="Find empty directories"
     )
     subparser_g.set_defaults(func=empty_dirs)
     subparser_g.add_argument("-p", "--pattern", default="*", help="fnmatch pattern")
     subparser_g.add_argument("--remove", action="store_true", help="Remove matching empty directories")
+
+    subparser_h = subparsers.add_parser(
+        "long-paths", formatter_class=ArgumentDefaultsHelpFormatter, help="Find long paths"
+    )
+    subparser_h.set_defaults(func=long_paths)
+    subparser_h.add_argument("--length", type=int, required=True, help="Print all paths longer than length")
+
+    subparser_i = subparsers.add_parser(
+        "exact-content-match",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+        help="Find files by exact content matching",
+    )
+    subparser_i.set_defaults(func=exact_content_match)
+    i_group = subparser_i.add_mutually_exclusive_group(required=True)
+    i_group.add_argument("--ascii-content", type=ascii, help="Find files which match this text")
+    i_group.add_argument(
+        "--base64-content", type=base64, help="Find binary files which match this base64 encoded string"
+    )
+    subparser_i.add_argument("--trash", action="store_true", help="Send matching files to trash")
+
+    subparser_j = subparsers.add_parser(
+        "transformed-dups", formatter_class=ArgumentDefaultsHelpFormatter, help="Find duplicate paths afters transform"
+    )
+    subparser_j.set_defaults(func=transformed_dups)
+    subparser_j.add_argument(
+        "--key", choices=("path", "name", "size"), required=True, help="Key to apply transformation to"
+    )
+    subparser_j.add_argument("--sub-pattern", type=re.compile, help="Regex sub pattern")
+    subparser_j.add_argument("--sub-replacement", type=str, help="Regex sub replacement")
+    subparser_j.add_argument(
+        "--at-least", metavar="N", type=int, default=2, help="Print only groups with at least N paths"
+    )
+
+    subparser_k = subparsers.add_parser(
+        "has-filesize", formatter_class=ArgumentDefaultsHelpFormatter, help="Find files which have a certain filesize"
+    )
+    subparser_k.set_defaults(func=has_filesize)
+    subparser_k.add_argument("--size", type=int, required=True, help="Key to apply transformation to")
 
     parser.add_argument("path", type=is_dir, help="Path to scan for files or directories")
     parser.add_argument(
@@ -361,25 +450,18 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
         type=suffix_lower,
         metavar=".EXT",
         action="append",
-        nargs="+",
         help="File extensions not to process",
     )
 
-    parser.add_argument(
-        "--out",
-        help="Write output to file, otherwise to stdout",
-    )
+    parser.add_argument("--out", help="Write output to file, otherwise to stdout")
 
-    parser.add_argument(
-        "--log",
-        help="Write logs to file, otherwise to stderr",
-    )
+    parser.add_argument("--log", help="Write logs to file, otherwise to stderr")
 
     parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
 
-    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z")
+    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=MarkdownHighlighter())
     FORMAT = "%(message)s"
 
     if args.verbose:

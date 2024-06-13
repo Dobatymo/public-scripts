@@ -178,10 +178,7 @@ if __name__ == "__main__":
     from genutility.args import is_dir
     from genutility.file import StdoutFile
 
-    hashfuncs = {
-        "metrohash": metrohash,
-        "no-meta-sha1": nometahash,
-    }
+    hashfuncs = {"metrohash": metrohash, "no-meta-sha1": nometahash}
 
     parser = ArgumentParser()
     parser.add_argument("directories", type=is_dir, nargs="+", help="Directory to search")

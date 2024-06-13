@@ -185,15 +185,13 @@ if __name__ == "__main__":
     subparsers.required = True
 
     parser_a = subparsers.add_parser(
-        "replace",
-        help="Replace substring in torrent paths. Useful to move entire directories.",
+        "replace", help="Replace substring in torrent paths. Useful to move entire directories."
     )
     parser_a.add_argument("old", help="Path substring to be replaced. For example 'C:'.")
     parser_a.add_argument("new", help="New path substring. For example 'D:'.")
 
     parser_b = subparsers.add_parser(
-        "move",
-        help="Moves a single file on the filesystem while also adjusting the save-path in QBittorrent",
+        "move", help="Moves a single file on the filesystem while also adjusting the save-path in QBittorrent"
     )
     parser_b.add_argument("src", type=is_file, help="File source path")
     parser_b.add_argument("dst", type=Path, help="File destination path")
@@ -203,11 +201,7 @@ if __name__ == "__main__":
         help="Scans a directory for files which belong to torrents known to QBittorrent and either adjusts the save-paths in QBittorrent or moves the files to the save-path location.",
     )
     parser_c.add_argument("path", type=is_dir, help="Path to scan for files from torrents")
-    parser_c.add_argument(
-        "--move",
-        action="store_true",
-        help="Move files instead of adjusting torrent paths",
-    )
+    parser_c.add_argument("--move", action="store_true", help="Move files instead of adjusting torrent paths")
     parser_c.add_argument("--recursive", action="store_true", help="Scan recursively")
 
     args = parser.parse_args()

@@ -47,13 +47,7 @@ For example this can be used to create a shell script to include multiple video 
     parser.add_argument("inpath", type=is_dir, help="Directory with files")
     parser.add_argument("tplpath", type=is_file, help="Path to template file.")
     parser.add_argument("outpath", type=future_file, help="Path to output file.")
-    parser.add_argument(
-        "--suffixes",
-        nargs="+",
-        default=[],
-        type=suffix,
-        help="Extensions to filter for.",
-    )
+    parser.add_argument("--suffixes", nargs="+", default=[], type=suffix, help="Extensions to filter for.")
     prepend_group = parser.add_mutually_exclusive_group(required=False)
     prepend_group.add_argument(
         "--prepend",

@@ -62,11 +62,7 @@ def create_torrent(
         t.set_priv(private)
 
     if progress:
-        libtorrent.set_piece_hashes(
-            t,
-            fspath(path.parent),
-            partial(progress, ceil(fs.total_size() / piece_size)),
-        )
+        libtorrent.set_piece_hashes(t, fspath(path.parent), partial(progress, ceil(fs.total_size() / piece_size)))
     else:
         libtorrent.set_piece_hashes(t, fspath(path.parent))
 
@@ -87,13 +83,7 @@ if __name__ == "__main__":
     parser = ArgumentParser(description="Create torrent file")
     parser.add_argument("inpath", type=existing_path, help="Path to files")
     parser.add_argument("outpath", type=future_file, help="Path to put torrent file")
-    parser.add_argument(
-        "--trackers",
-        metavar="TRACKER",
-        nargs="*",
-        default=[],
-        help="List of tracker URLs",
-    )
+    parser.add_argument("--trackers", metavar="TRACKER", nargs="*", default=[], help="List of tracker URLs")
     parser.add_argument("--silent", action="store_true", help="Don't show progress bar")
     parser.add_argument("--private", action="store_true", help="Create private torrent")
 

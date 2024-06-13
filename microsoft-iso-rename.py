@@ -27,11 +27,7 @@ class HeidocBackend(BackendBase):
     @classmethod
     def hash_to_page_url(cls, hashhex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         search_url = "https://www.heidoc.net/php/myvsdump_search.php"
-        params = {
-            "sha1": hashhex,
-            "mindate": "1990-01-01T00:00",
-            "maxdate": "2030-01-01T00:00",
-        }
+        params = {"sha1": hashhex, "mindate": "1990-01-01T00:00", "maxdate": "2030-01-01T00:00"}
         r = requests.get(search_url, params=params, timeout=timeout)
         r.raise_for_status()
 
@@ -64,9 +60,7 @@ class AdguardBackend(BackendBase):
     @classmethod
     def hash_to_page_url(cls, hashhex: str, timeout: int = DEFAULT_TIMEOUT) -> Optional[str]:
         search_url = "https://files.rg-adguard.net/search"
-        data = {
-            "search": hashhex,
-        }
+        data = {"search": hashhex}
         r = requests.post(search_url, data=data, timeout=timeout)
         r.raise_for_status()
 
@@ -108,10 +102,7 @@ class AdguardBackend(BackendBase):
 
 class MicrosoftHashes:
     hashes: Dict[str, Optional[str]]
-    backendsmap = {
-        "heidoc": HeidocBackend,
-        "adguard": AdguardBackend,
-    }
+    backendsmap = {"heidoc": HeidocBackend, "adguard": AdguardBackend}
 
     def __init__(self, cachefile: Optional[str] = None, backend: Optional[str] = None) -> None:
         self.cachefile = cachefile or DEFAULT_CACHEFILE

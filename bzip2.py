@@ -6,12 +6,7 @@ from genutility.file import copen, copyfilelike
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument(
-    "-c",
-    "--stdout",
-    action="store_true",
-    help="Compress or decompress to standard output.",
-)
+parser.add_argument("-c", "--stdout", action="store_true", help="Compress or decompress to standard output.")
 
 mode = parser.add_mutually_exclusive_group()
 mode.add_argument("-d", "--decompress", action="store_true", help="Force decompression.")

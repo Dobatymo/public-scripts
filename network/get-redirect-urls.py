@@ -21,10 +21,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument(
-        "file",
-        nargs="?",
-        default="-",
-        help="file which contains one link per line. `-` reads from stdin.",
+        "file", nargs="?", default="-", help="file which contains one link per line. `-` reads from stdin."
     )
     args = parser.parse_args()
 

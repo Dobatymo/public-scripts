@@ -1,3 +1,9 @@
+[build-system]
+build-backend = "poetry.core.masonry.api"
+requires = [
+  "poetry-core",
+]
+
 [project]
 readme = "readme.md"
 requires-python = ">=3.7"
@@ -11,6 +17,42 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
 ]
 
+[tool.poetry]
+name = "public-scripts"
+version = "0.1.0"
+description = ""
+authors = [
+  "Dobatymo <Dobatymo@users.noreply.github.com>",
+]
+readme = "README.md"
+packages = [
+]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+bencode-py = ">=2.0.0"
+ctypes-windows-sdk = ">=0.0.15"
+genutility = { version = ">=0.0.0.0.104", extras = [
+  "image",
+  "pillow",
+  "rich",
+  "torrent",
+  "videofile",
+] }
+libtorrent = ">=2.0.5"
+metrictrees = ">0"
+metrohash-python = ">0"
+mutagen = ">0"
+pillow = ">=9.1.0"
+pyexiv2 = ">0"
+pymongo = ">0"
+pypyodbc = ">0"
+pywin32 = ">0"
+requests = ">0"
+rich = ">0"
+send2trash = ">0"
+typing-extensions = ">=4.6.0"
+
 [tool.black]
 line-length = 120
 
@@ -20,6 +62,11 @@ line-length = 120
 lint.extend-select = [
   "B",
   "I",
+]
+
+lint.ignore = [
+  "B011",
+  "B904",
 ]
 
 [tool.isort]

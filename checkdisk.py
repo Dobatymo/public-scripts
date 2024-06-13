@@ -42,7 +42,7 @@ class BinaryLineBuffer:
         else:
             out = [Line._make(m.groups()) for m in matches]
             if full and matches[-1].end() != len(self.buffer):
-                out.append((self.buffer[matches[-1].end() :], b""))
+                out.append(Line(self.buffer[matches[-1].end() :], b""))
                 self.buffer.clear()
             else:
                 del self.buffer[: matches[-1].end()]
@@ -76,6 +76,7 @@ def check_disks(drives: List[str]) -> None:
         try:
             with stderr.open("ab") as fw:
                 with subprocess.Popen(cmd, bufsize=0, stdout=subprocess.PIPE, stderr=fw) as proc:
+                    assert proc.stdout is not None  # for mypy
                     lb = BinaryLineBuffer()
                     while True:
                         chunk = proc.stdout.read(1024)
@@ -105,10 +106,14 @@ def main(args: Namespace) -> None:
     if args.select is None:
         drives = []
 
-        if not hasattr(os, "listdrives"):
-            parser.error("Python < 3.12 requires drives to be selected manually using --select")
+        if not hasattr(os, "listdrives"):  # Python 3.12+
+            from genutility.win.device import get_logical_drives
 
-        for drive in os.listdrives():
+            listdrives = get_logical_drives
+        else:
+            listdrives = os.listdrives
+
+        for drive in listdrives():
             drive = drive.rstrip("\\")
             if drive not in args.ignore:
                 drives.append(drive)

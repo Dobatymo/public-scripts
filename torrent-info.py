@@ -25,15 +25,9 @@ def main():
     parser.add_argument("--width", type=int, default=80, help="Terminal width")
     parser.add_argument("--compact", action="store_true", help="Compact output")
     parser.add_argument("--json", action="store_true", help="Use JSON format instead of pretty-print.")
+    parser.add_argument("--out", type=Path, help="Out path. If not specified, output will be printed to screen.")
     parser.add_argument(
-        "--out",
-        type=Path,
-        help="Out path. If not specified, output will be printed to screen.",
-    )
-    parser.add_argument(
-        "--infohash",
-        action="store_true",
-        help="Calculate torrent info hash instead of showing torrent contents.",
+        "--infohash", action="store_true", help="Calculate torrent info hash instead of showing torrent contents."
     )
     args = parser.parse_args()
 
@@ -50,14 +44,7 @@ def main():
     else:
         with PathOrTextIO(args.out or sys.stdout, "wt") as fw:
             if args.json:
-                return json.dump(
-                    td,
-                    fw,
-                    ensure_ascii=False,
-                    indent="\t",
-                    sort_keys=False,
-                    cls=BuiltinEncoder,
-                )
+                return json.dump(td, fw, ensure_ascii=False, indent="\t", sort_keys=False, cls=BuiltinEncoder)
 
             else:
                 del td["info"]["pieces"]
