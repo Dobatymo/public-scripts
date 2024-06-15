@@ -4,7 +4,8 @@ from ctypes.wintypes import ULONG, USHORT
 from enum import Enum, IntEnum, IntFlag
 from functools import partial
 from pprint import pprint
-from typing import Optional, Tuple, Type, TypeVar
+from struct import unpack
+from typing import Any, Dict, Optional, Tuple, Type, TypeVar
 
 from cwinsdk import struct2dict
 from cwinsdk.km.ata import IDE_COMMAND_IDENTIFY, IDE_SMART_READ_ATTRIBUTES, IDENTIFY_DEVICE_DATA
@@ -40,6 +41,8 @@ from cwinsdk.shared.ntdef import PVOID
 from cwinsdk.shared.scsi import CDB, IOCTL_SCSI_MINIPORT_IDENTIFY, SCSIOP_ATA_PASSTHROUGH12, SCSIOP_ATA_PASSTHROUGH16
 from cwinsdk.um import winioctl
 from genutility.win.device import Drive, MyDeviceIoControl, enum_disks, struct_to_array
+from rich.console import Console
+from rich.table import Table
 from typing_extensions import Buffer
 
 DRIVE_HEAD_REG = 0xA0  # where is this from?
@@ -421,11 +424,13 @@ class Methods(Enum):
 
 
 class SmartDevice:
+    handle: Optional[int]
+
     def __init__(self, drive: Drive) -> None:
         self.drive = drive
         self.handle = drive.handle
         self.alignment_mask = self.drive.sqp_adapter()["AlignmentMask"]
-        logging.warning("AlignmentMask: %s", self.alignment_mask)
+        logging.debug("AlignmentMask: %s", self.alignment_mask)
 
     @classmethod
     def open(cls, drive_index: int, method: Optional[Methods]) -> "SmartDevice":
@@ -846,6 +851,15 @@ class SmartDeviceAtaPassthrough(SmartDevice):
         raise NotImplementedError
 
 
+def nvme_str(c_array: Buffer) -> str:
+    b = bytes(c_array)
+    try:
+        return b.decode("ascii")
+    except UnicodeDecodeError:
+        logging.warning("NVME string not ASCII")
+        return b.decode("latin1")
+
+
 class SmartDeviceNvme(SmartDevice):
     def drive_info(self):
         return self.drive.sqp_device_protocol_specific(
@@ -859,14 +873,14 @@ class SmartDeviceNvme(SmartDevice):
         cd = cns_controller["NVME_IDENTIFY_CONTROLLER_DATA"]
 
         mdts = 2 ** cd["MDTS"] if cd["MDTS"] > 0 else 0
-        ieee = f"{cd['IEEE'][2]:X}-{cd['IEEE'][1]:X}-{cd['IEEE'][0]:X}"
+        ieee = f"{cd['IEEE'][2]:02X}-{cd['IEEE'][1]:02X}-{cd['IEEE'][0]:02X}"
 
         out = {
             "PCI Vendor ID": cd["VID"],
             "PCI Subsystem Vendor ID": cd["SSVID"],
-            "Serial Number": bytes(cd["SN"]).decode("ascii").strip(" "),
-            "Model Number": bytes(cd["MN"]).decode("ascii").strip(" "),
-            "Firmware Revision": bytes(cd["FR"]).decode("ascii").strip(" "),
+            "Serial Number": nvme_str(cd["SN"]).strip(" "),
+            "Model Number": nvme_str(cd["MN"]).strip(" "),
+            "Firmware Revision": nvme_str(cd["FR"]).strip(" "),
             "Recommended Arbitration Burst (count)": 2 ** cd["RAB"],
             "IEEE OUI Identifier (hex)": ieee,
             "Maximum Data Transfer Size (pages)": mdts,
@@ -931,14 +945,12 @@ class SmartDeviceNvme(SmartDevice):
         }
 
 
-def decode_temp_wdc(data, specific):
-    from struct import unpack
-
+def decode_temp_wdc(data, specific) -> str:
     cur, min, max = unpack("<HHH", bytes(data) + bytes(specific))
     return f"cur={cur} min={min} max={max}"
 
 
-def print_smart_info(smart_attr, smart_thresh) -> None:
+def smart_info_json(smart_attr, smart_thresh) -> Dict[str, Any]:
     smart = {}
 
     decode = {194: decode_temp_wdc}
@@ -960,10 +972,24 @@ def print_smart_info(smart_attr, smart_thresh) -> None:
         if id != 0x0:
             smart[id]["Threshold"] = attr.Threshold
 
-    print("ID", "Label", "PreFail", "CurrentValue", "WorstValue", "decoded", "Data", "AttributeSpecific")
+    out: Dict[str, Any] = {
+        "columns": [
+            "ID",
+            "Label",
+            "Pre-Fail",
+            "Current Value",
+            "Worst Value",
+            "Threshold",
+            "Decoded",
+            "Data",
+            "Attribute Specific",
+        ],
+        "rows": [],
+    }
+
     for k, v in smart.items():
         decoded = decode.get(k, lambda x, y: "")(v["Data"], v["AttributeSpecific"])
-        print(
+        row = [
             k,
             v["Label"],
             v["PreFail"],
@@ -973,19 +999,37 @@ def print_smart_info(smart_attr, smart_thresh) -> None:
             decoded,
             v["Data"].hex(),
             v["AttributeSpecific"].hex(),
-        )
+        ]
+        out["rows"].append(row)
+    return out
+
+
+def print_smart_info(smart_info: dict) -> None:
+    console = Console()
+
+    table = Table(title="SMART", padding=0)
+
+    for col in smart_info["columns"]:
+        table.add_column(col)
+
+    for row in smart_info["rows"]:
+        row = [str(i) for i in row]
+        table.add_row(*row)
+
+    console.print(table)
 
 
 def drive_info(drive_index: int, method: Optional[Methods]) -> None:
     with SmartDevice.open(drive_index, method) as sd:
         info = sd.drive_info()
-        print(sd.drive_info_json(info))
+        pprint(sd.drive_info_json(info))
 
         # if info.CommandSetSupport.SmartCommands:
 
         try:
             smart_attr, smart_thresh = sd.smart()
-            print_smart_info(smart_attr, smart_thresh)
+            smart_info = smart_info_json(smart_attr, smart_thresh)
+            print_smart_info(smart_info)
         except NotImplementedError:
             pprint(sd.health_info())
 
@@ -994,26 +1038,34 @@ if __name__ == "__main__":
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser.add_argument("--all-drives", action="store_true", help="Show information for all drives")
-    parser.add_argument("--drive-idx", metavar="N", type=int, help="Show information for drive N")
-    parser.add_argument("--method", choices=[i.value for i in Methods], help="Choice access method")
-    parser.add_argument("--ata-pass-through", choices=(12, 16), help="Use 12 or 16 byte ATA pass-through")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--all-drives", action="store_true", help="Show information for all drives")
+    group.add_argument("--drive-index", metavar="N", type=int, help="Show information for drive N")
+    parser.add_argument(
+        "--method",
+        choices=[i.value for i in Methods],
+        help="Chose access method. `smart` should work for directly attached ATA devices (like internal SATA drives, the different SCSI pass-through methods are for ATA devices attached via SCSI device (eg. USB), `nvme` is for directly attached nvme drives.",
+    )
+    parser.add_argument("-v", "--verbose", action="store_true", help="Show debug info")
     args = parser.parse_args()
 
-    logging.basicConfig(level=logging.INFO)
+    if args.verbose:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.INFO)
 
     if args.method is not None:
         args.method = Methods(args.method)
 
-    if args.drive_idx is not None:
+    if args.drive_index is not None:
         try:
-            drive_info(args.drive_idx, args.method)
+            drive_info(args.drive_index, args.method)
         except FileNotFoundError:
-            print(f"Cannot find drive {args.drive_idx}")
-        except RuntimeError:
-            logging.exception("RuntimeError")
-        except OSError:
-            logging.exception("OSError")
+            print(f"Cannot find drive {args.drive_index}")
+        except (RuntimeError, OSError):
+            logging.exception("Failed to read SMART info for drive %s", args.drive_index)
+        except Exception:
+            logging.exception("Failed to read SMART info for drive %s", args.drive_index)
 
     elif args.all_drives:
         for d in enum_disks():
@@ -1022,11 +1074,9 @@ if __name__ == "__main__":
             try:
                 drive_info(drive_index, args.method)
             except FileNotFoundError:
-                print(f"Cannot find drive {drive_index}")
-            except RuntimeError:
-                logging.exception("RuntimeError")
-            except OSError:
-                logging.exception("OSError")
+                logging.error("Cannot find drive %s", drive_index)
+            except (RuntimeError, OSError):
+                logging.exception("Failed to read SMART info for drive %s", drive_index)
+            except Exception:
+                logging.exception("Failed to read SMART info for drive %s", drive_index)
             print("---")
-    else:
-        parser.error("Either --drive-idx or --all-drives is required")
