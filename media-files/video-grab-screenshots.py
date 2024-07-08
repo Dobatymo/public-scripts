@@ -5,6 +5,7 @@ from pathlib import Path
 from genutility.args import between, existing_path, suffix
 from genutility.filesystem import fileextensions
 from genutility.videofile import NoGoodFrame, grab_pic
+from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,7 @@ def main():
     parser.add_argument("--backend", choices=("av", "cv"), default="cv")
     args = parser.parse_args()
 
-    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z")
+    handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=NullHighlighter())
     FORMAT = "%(message)s"
 
     if args.verbose:

@@ -7,4 +7,4 @@ parser.add_argument("size", type=int, help="Bytes to read from input file")
 args = parser.parse_args()
 
 with open(args.outpath, "wb") as fw, open(args.inpath, "rb") as fr:
-    fw.write(fr.read(args.size))
+    fw.write(fr.read(args.size))  # buffered

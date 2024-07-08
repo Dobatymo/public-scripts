@@ -2,7 +2,7 @@ import errno
 import logging
 import os
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, RawTextHelpFormatter
-from io import SEEK_CUR
+from io import SEEK_CUR, BufferedIOBase
 from shutil import disk_usage
 from textwrap import dedent
 from typing import BinaryIO, Iterator, Optional
@@ -14,10 +14,6 @@ from genutility.iter import progressdata
 from genutility.win.device import Drive, Volume
 
 DEFAULT_SECTOR_SIZE = 512
-
-
-class AdminNeeded(OSError):
-    pass
 
 
 def save_seek_cur(fr: BinaryIO, pos: int, sector_size: int) -> None:
@@ -108,6 +104,8 @@ def _blockfileiterignore(
     if chunk_size % sector_size != 0:
         raise ValueError("chunk_size must be a multiple of sector_size")
 
+    is_buffered = isinstance(fr, BufferedIOBase)
+
     retries = Retries(total_retries=3, sector_retries=3)
 
     while True:
@@ -141,9 +139,8 @@ def _blockfileiterignore(
 
         else:
             if data:
-                if len(data) != chunk_size:
-                    if fr.tell() != total_size:
-                        logging.warning("Read size %i differs from expected size %i", len(data), chunk_size)
+                if is_buffered and len(data) != chunk_size and fr.tell() != total_size:
+                    logging.warning("Read size %i differs from expected size %i", len(data), chunk_size)
                 yield data
             else:
                 break
@@ -154,23 +151,21 @@ def blockfileiterignore(
 ) -> Iterator[bytes]:
     if extended:
         """When trying to read past usual volume boundaries, the requested size cannot be larger
-        than the actual partition size. But using buffered IO Python might request too much,
+        than the actual partition size. But using buffered IO, Python might request too much
         and trigger an error. So buffering needs to be disabled in that case.
         """
         buffering = 0
     else:
         buffering = -1
 
-    try:
-        fr = open(volume, "rb", encoding=None, buffering=buffering)
-    except OSError:
-        raise AdminNeeded()
+    fr = open(volume, "rb", buffering=buffering)
 
     try:
         with Drive.from_file(fr) as d:
             sector_size = d.sqp_alignment()["BytesPerPhysicalSector"]
     except OSError:
         sector_size = DEFAULT_SECTOR_SIZE
+        logging.warning("Could not read physical sector size. Using default size %d", sector_size)
 
     # fr.seek(0, SEEK_END) # doesn't work...
     try:
@@ -189,10 +184,10 @@ def blockfileiterignore(
             else:
                 raise
 
-    if seek:
-        fr.seek(seek, SEEK_CUR)  # relative seek
-
     try:
+        if seek:
+            fr.seek(seek, SEEK_CUR)  # relative seek
+
         yield from _blockfileiterignore(fr, total_size, sector_size, chunk_size)
 
     finally:
@@ -229,7 +224,7 @@ def main():
     parser.add_argument(
         "--extended",
         action="store_true",
-        help="Read the data between the end of the volume and the end of the partition. Can be used for volumes, not drives.",
+        help="Read the data between the end of the volume and the end of the partition. Can be used for volumes, not drives. Only supported on Windows.",
     )
     args = parser.parse_args()
 
@@ -248,8 +243,8 @@ def main():
                 blockfileiterignore(args.volume, seek=seek, extended=args.extended, chunk_size=args.bs)
             ):
                 fw.write(data)
-    except AdminNeeded:
-        print("Volume does not exist or administrator privileges needed!")
+    except PermissionError:
+        print("Administrator privileges needed!")
 
 
 if __name__ == "__main__":

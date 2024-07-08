@@ -4,7 +4,7 @@ from ctypes import byref, create_unicode_buffer
 from ctypes.wintypes import DWORD
 from enum import Enum, Flag, IntEnum, IntFlag
 from shutil import disk_usage
-from typing import List, Optional, Union
+from typing import List, Optional
 
 from cwinsdk.shared import winerror
 from cwinsdk.shared.guiddef import GUID
@@ -369,16 +369,11 @@ def print_filesystem_statistics(stats: List[dict]) -> None:
 device_type_path_map = {DEVICE_TYPE.DISK: "PhysicalDrive"}  # not DEVICE_TYPE.CD_ROM: "CdRom"
 
 
-def _get_path(DeviceType: Union[DEVICE_TYPE, int], DeviceNumber: int) -> Optional[str]:
+def _get_path(DeviceType: DEVICE_TYPE, DeviceNumber: int) -> Optional[str]:
     if DeviceType in device_type_path_map:
         name = device_type_path_map[DeviceType]
         return f"\\\\?\\{name}{DeviceNumber}"
     return None
-
-
-def print_device_number(device_number, is_drive: bool = False) -> None:
-    device_number["DeviceType"] = DEVICE_TYPE(device_number["DeviceType"])
-    print("get_device_number:", device_number)
 
 
 def _print_all(handle) -> None:
@@ -400,10 +395,7 @@ def _print_all(handle) -> None:
         else:
             print("Unsupported device type", device_number["DeviceType"])
 
-    try:
-        print_device_number(device_number, isinstance(handle, Drive))
-    except OSError as e:
-        print("get_device_number:", e)
+    print("get_device_number:", device_number)
 
     if isinstance(handle, Drive):
         print(handle.sqp_adapter())

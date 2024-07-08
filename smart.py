@@ -387,7 +387,7 @@ def ata_identify_json(devid: IDENTIFY_DEVICE_DATA) -> dict:
         "SerialNumber": SerialNumber,
         "FirmwareRevision": FirmwareRevision,
         "MajorRevision": str(MajorRevision),
-        "MinorRevision": str(MinorRevision),
+        "MinorRevision": MinorRevision.name,
         "NominalFormFactor": NominalFormFactor.name,
         "NominalMediaRotationRate": NominalMediaRotationRate,
         "CryptoScrambleExtCommandSupported": devid.CryptoScrambleExtCommandSupported,
@@ -415,7 +415,8 @@ class Methods(Enum):
     NVME = "nvme"
 
     @classmethod
-    def _missing_(cls, value: str):
+    def _missing_(cls, value: Any):
+        assert isinstance(value, str)
         value = value.lower()
         for member in cls:
             if member.value.lower() == value:
@@ -440,7 +441,7 @@ class SmartDevice:
             opener = partial(Drive.from_drive_type_and_index, "PhysicalDrive", drive_index)
 
         try:
-            drive = opener("w+")
+            drive = opener("r+")
         except PermissionError:
             logging.warning(
                 "Failed to open drive %d with read/write access. Trying with meta access only.", drive_index
@@ -856,8 +857,12 @@ def nvme_str(c_array: Buffer) -> str:
     try:
         return b.decode("ascii")
     except UnicodeDecodeError:
-        logging.warning("NVME string not ASCII")
+        logging.warning("NVMe string not ASCII")
         return b.decode("latin1")
+
+
+def none_if_null(obj: int) -> Optional[int]:
+    return obj if obj != 0 else None
 
 
 class SmartDeviceNvme(SmartDevice):
@@ -875,26 +880,48 @@ class SmartDeviceNvme(SmartDevice):
         mdts = 2 ** cd["MDTS"] if cd["MDTS"] > 0 else 0
         ieee = f"{cd['IEEE'][2]:02X}-{cd['IEEE'][1]:02X}-{cd['IEEE'][0]:02X}"
 
+        if cd["VER"] == 0:
+            version = (1, 0, 0)
+            version_str = "<1.2"
+        else:
+            ver = nvme.NVME_VERSION.from_buffer_copy(cd["VER"].to_bytes(4, "little"))
+            version = (ver.MJR, ver.MNR, ver.TER)
+            version_str = ".".join(map(str, version))
+
         out = {
-            "PCI Vendor ID": cd["VID"],
-            "PCI Subsystem Vendor ID": cd["SSVID"],
-            "Serial Number": nvme_str(cd["SN"]).strip(" "),
-            "Model Number": nvme_str(cd["MN"]).strip(" "),
-            "Firmware Revision": nvme_str(cd["FR"]).strip(" "),
-            "Recommended Arbitration Burst (count)": 2 ** cd["RAB"],
-            "IEEE OUI Identifier (hex)": ieee,
-            "Maximum Data Transfer Size (pages)": mdts,
-            "Controller ID": cd["CNTLID"],
-            "Version": cd["VER"],
-            "RTD3 Resume Latency (microseconds)": cd["RTD3R"],
-            "RTD3 Entry Latency (microseconds)": cd["RTD3E"],
-            "Warning Composite Temperature Threshold (kelvin)": (cd["WCTEMP"] if cd["WCTEMP"] != 0 else None),
-            "Critical Composite Temperature Threshold (kelvin)": (cd["CCTEMP"] if cd["CCTEMP"] != 0 else None),
-            "Host Memory Buffer Preferred Size (in 4 KiB)": (cd["HMPRE"] if cd["HMPRE"] != 0 else None),
-            "Host Memory Buffer Minimum Size (in 4 KiB)": cd["HMMIN"],
-            "Total NVM Capacity (bytes)": int.from_bytes(cd["TNVMCAP"], byteorder="little"),
-            "Unallocated NVM Capacity (bytes)": int.from_bytes(cd["UNVMCAP"], byteorder="little"),
+            "NVMe version": version_str,
+            "PCI Vendor ID": cd["VID"],  # >=1.0
+            "PCI Subsystem Vendor ID": cd["SSVID"],  # >=1.0
+            "Serial Number": nvme_str(cd["SN"]).strip(" "),  # >=1.0
+            "Model Number": nvme_str(cd["MN"]).strip(" "),  # >=1.0
+            "Firmware Revision": nvme_str(cd["FR"]).strip(" "),  # >=1.0
+            "Recommended Arbitration Burst (count)": 2 ** cd["RAB"],  # >=1.0
+            "IEEE OUI Identifier (hex)": ieee,  # >=1.0
+            "Maximum Data Transfer Size (pages)": mdts,  # >=1.0
+            "Controller ID": cd["CNTLID"],  # >=1.1
+            "Host Memory Buffer Preferred Size (in 4 KiB)": None,  # >=1.2.0
+            "Host Memory Buffer Minimum Size (in 4 KiB)": None,  # >=1.2.0
+            "RTD3 Resume Latency (microseconds)": None,  # >=1.2.0
+            "RTD3 Entry Latency (microseconds)": None,  # >=1.2.0
+            "Total NVM Capacity (bytes)": None,  # >=1.2.0
+            "Unallocated NVM Capacity (bytes)": None,  # >=1.2.0
+            "Warning Composite Temperature Threshold (kelvin)": None,  # >=1.2.0
+            "Critical Composite Temperature Threshold (kelvin)": None,  # >=1.2.0
         }
+
+        if version >= (1, 2, 0):
+            out.update(
+                {
+                    "RTD3 Resume Latency (microseconds)": cd["RTD3R"],
+                    "RTD3 Entry Latency (microseconds)": cd["RTD3E"],
+                    "Host Memory Buffer Preferred Size (in 4 KiB)": none_if_null(cd["HMPRE"]),
+                    "Host Memory Buffer Minimum Size (in 4 KiB)": cd["HMMIN"],
+                    "Total NVM Capacity (bytes)": int.from_bytes(cd["TNVMCAP"], byteorder="little"),
+                    "Unallocated NVM Capacity (bytes)": int.from_bytes(cd["UNVMCAP"], byteorder="little"),
+                    "Warning Composite Temperature Threshold (kelvin)": none_if_null(cd["WCTEMP"]),
+                    "Critical Composite Temperature Threshold (kelvin)": none_if_null(cd["CCTEMP"]),
+                }
+            )
 
         return out
 
@@ -945,15 +972,40 @@ class SmartDeviceNvme(SmartDevice):
         }
 
 
-def decode_temp_wdc(data, specific) -> str:
+def decode_temp_wdc(data: bytes, specific: bytes) -> str:
+    """confirmed for WD, HGST and TOSHIBA"""
+
     cur, min, max = unpack("<HHH", bytes(data) + bytes(specific))
     return f"cur={cur} min={min} max={max}"
+
+
+def decode_power_on_wdc(data: bytes, specific: bytes) -> int:
+    """confirmed for WD, HGST and TOSHIBA"""
+
+    return int.from_bytes(data, "little")
+
+
+def decode_power_cycle_count_wdc(data: bytes, specific: bytes) -> int:
+    """confirmed for WD, HGST and TOSHIBA"""
+
+    return int.from_bytes(data, "little")
+
+
+def decode_ultra_dma_crc_error_count_wdc(data: bytes, specific: bytes) -> int:
+    """confirmed for WD, HGST and TOSHIBA"""
+
+    return int.from_bytes(data, "little")
 
 
 def smart_info_json(smart_attr, smart_thresh) -> Dict[str, Any]:
     smart = {}
 
-    decode = {194: decode_temp_wdc}
+    decode = {
+        9: decode_power_on_wdc,
+        12: decode_power_cycle_count_wdc,
+        194: decode_temp_wdc,
+        199: decode_ultra_dma_crc_error_count_wdc,
+    }
 
     for attr in smart_attr.Attributes.Attribute:
         id = attr.AttributeID

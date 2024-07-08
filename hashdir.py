@@ -2,9 +2,11 @@ import hashlib
 import logging
 import os.path
 import re
+import sys
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from os import fspath
 from pathlib import Path
-from typing import IO, Iterable, Iterator, List, Optional, Sequence, TypedDict
+from typing import IO, Iterable, Iterator, List, Optional, Sequence, Type, TypedDict
 
 from genutility.callbacks import Progress as NullProgress
 from genutility.file import StdoutFile
@@ -13,15 +15,17 @@ from genutility.hash import HashCls, Hashobj, HashobjCRC, hash_file
 from genutility.iter import CachedIterable
 from genutility.rich import MarkdownHighlighter, Progress, StdoutFileNoStyle
 from rich.logging import RichHandler
+from rich.progress import BarColumn, MofNCompleteColumn
 from rich.progress import Progress as RichProgress
-from typing_extensions import Self
+from rich.progress import TextColumn, TimeElapsedColumn
+from typing_extensions import NotRequired, Self
 
 logger = logging.getLogger(__name__)
 
 
 class Meta(TypedDict):
     hash: Optional[bytes]
-    size: int
+    size: NotRequired[int]
 
 
 def get_hash_name(hashcls: HashCls) -> str:
@@ -36,11 +40,25 @@ def get_hash_name(hashcls: HashCls) -> str:
 def _metas(paths: List[str], hashcls: HashCls, dirpath: PathType) -> Iterator[Meta]:
     for path in paths:
         abspath = os.path.join(dirpath, path)
-        size = os.path.getsize(abspath)
+        try:
+            size = os.path.getsize(abspath)
+        except FileNotFoundError:
+            logger.warning("File disappeared: `%s`", path)
+            continue
+        except OSError as e:
+            if e.filename:
+                logger.error("Failed to read size: %s", e)
+            else:
+                logger.error("Failed to read size of `%s`: %s", path, e)
+            continue
+
         try:
             hashbytes = hash_file(abspath, hashcls).digest()
         except OSError as e:
-            logger.error("Failed to hash `%s`: %s", path, e)
+            if e.filename:
+                logger.error("Failed to hash file: %s", e)
+            else:
+                logger.error("Failed to hash `%s`: %s", path, e)
             hashbytes = None
         yield {"hash": hashbytes, "size": size}
 
@@ -62,7 +80,49 @@ def _paths(dirpath: PathType, progress: Optional[NullProgress] = None) -> List[s
         return sorted(progress.track(normit), key=sortkey)
 
 
+class Formatter:
+    def __init__(self, stream: IO[str]) -> None:
+        self.stream = stream
+
+    def header(self, hashname: str) -> None:
+        pass
+
+    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+        raise NotImplementedError
+
+    def format_total(self, hexdigest: str, path: str, size: int) -> None:
+        self.format_line(hexdigest, path, size)
+
+
+class Hashsum(Formatter):
+    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+        self.stream.write(f"{hexdigest} *{path}\n")
+
+
+class Hashdeep(Formatter):
+    def header(self, hashname: str) -> None:
+        self.stream.write("%%%% HASHDEEP-1.0\n")
+        self.stream.write(f"%%%% size,{hashname},filename\n")
+
+    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+        self.stream.write(f"{size},{hexdigest},{path}\n")
+
+    def format_total(self, hexdigest: str, path: str, size: int) -> None:
+        self.stream.write(f"% {size},{hexdigest},{path}\n")
+
+
+class SFV(Formatter):
+    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+        self.stream.write(f"{path} {hexdigest}\n")
+
+
 class DirHasher:
+    formatter = {
+        "hashsum": Hashsum,
+        "hashdeep": Hashdeep,
+        "sfv": SFV,
+    }
+
     def __init__(
         self,
         paths: Sequence[str],
@@ -76,6 +136,13 @@ class DirHasher:
         self.hashname = hashname
         self._toppath = toppath
         self.progress = progress or NullProgress()
+
+    @classmethod
+    def get_formatter_class(cls, fformat: str) -> Type[Formatter]:
+        try:
+            return cls.formatter[fformat]
+        except KeyError:
+            raise ValueError(f"Invalid fformat: {fformat}")
 
     @property
     def toppath(self) -> str:
@@ -97,7 +164,7 @@ class DirHasher:
 
     @classmethod
     def from_file(cls, filepath: Path) -> Self:
-        """Reads a file ins md5sum or sha1sum format and creates a DirHasher instance."""
+        """Reads a file in md5sum or sha1sum format and creates a DirHasher instance."""
 
         metas: List[Meta] = []
         paths: List[str] = []
@@ -125,61 +192,37 @@ class DirHasher:
 
         return cls(paths, metas, hashname, None)
 
-    @staticmethod
-    def format_line_hashsum(hexdigest: str, path: str, end="\n") -> str:
-        return f"{hexdigest} *{path}{end}"
-
-    @staticmethod
-    def format_line_hashdeep(hexdigest: str, path: str, size: int, end="\n") -> str:
-        return f"{size},{hexdigest},{path}{end}"
-
     def to_stream(
         self,
         stream: IO[str],
         include_total: bool = True,
-        hashcls: HashCls = hashlib.sha1,
         fformat: str = "hashsum",
+        hashcls: HashCls = hashlib.sha1,
         include_names: bool = True,
     ) -> None:
         # see https://github.com/jessek/hashdeep/blob/master/FILEFORMAT
 
-        if fformat == "hashdeep":
-            stream.write("%%%% HASHDEEP-1.0\n")
-            stream.write(f"%%%% size,{self.hashname},filename\n")
+        formatter = self.get_formatter_class(fformat)(stream)
+        formatter.header(self.hashname)
 
         for meta, path in self.progress.track(zip(self.metas, self.paths), total=len(self.paths)):
             if meta["hash"] is None:  # reading file might have failed during hash calculation
                 continue
 
-            if fformat == "hashsum":
-                stream.write(self.format_line_hashsum(meta["hash"].hex(), path))
-            elif fformat == "hashdeep":
-                stream.write(self.format_line_hashdeep(meta["hash"].hex(), path, meta["size"]))
-            elif fformat == "sfv":
-                stream.write(f"{path} {meta['hash'].hex()}\n")
-            else:
-                raise ValueError(f"Unsupported file format: {fformat}")
+            formatter.format_line(meta["hash"].hex(), path, meta["size"])
 
         if include_total:
-            line = self.total_line(fformat, hashcls, include_names, end="\n")
-            stream.write(line)
+            self.total_line(formatter, hashcls, include_names)
 
     def total_line(
-        self, fformat: str, hashcls: HashCls = hashlib.sha1, include_names: bool = True, end: str = ""
-    ) -> str:
-        m = self.total(hashcls, include_names)
-
-        if fformat == "hashsum":
-            line = self.format_line_hashsum(m.hexdigest(), self.toppath, end=end)
-        elif fformat == "hashdeep":
-            totalsize = sum(meta["size"] for meta in self.metas)
-            line = self.format_line_hashdeep(m.hexdigest(), self.toppath, totalsize, end=end)
-        elif fformat == "sfv":
-            line = f"{self.toppath} {m.hexdigest()}"
-        else:
-            raise ValueError(f"Unsupported file format: {fformat}")
-
-        return line
+        self,
+        formatter: Formatter,
+        hashcls: HashCls = hashlib.sha1,
+        include_names: bool = True,
+    ) -> None:
+        total_hexdigest = self.total(hashcls, include_names).hexdigest()
+        total_size = sum(meta["size"] for meta in self.metas)
+        formatter.format_total(total_hexdigest, self.toppath, total_size)
 
     def total(self, hashcls: HashCls = hashlib.sha1, include_names: bool = True) -> Hashobj:
         if isinstance(hashcls, str):
@@ -198,35 +241,7 @@ class DirHasher:
         return m
 
 
-if __name__ == "__main__":
-    from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
-
-    ALGORITHMS = sorted(hashlib.algorithms_available) + ["crc32"]
-    HASHDEEP_ALGOS = sorted({"md5", "sha1", "sha256", "whirlpool", "tiger"} & set(ALGORITHMS))
-
-    parser = ArgumentParser(
-        description="calculate hash of all files in directory combined", formatter_class=ArgumentDefaultsHelpFormatter
-    )
-    parser.add_argument("path", type=Path, help="input file or directory")
-    parser.add_argument(
-        "--input",
-        choices=("fs", "file"),
-        default="fs",
-        help="fs: create file with hashes from directory path. file: read file with hashes and print summary hash of hashes.",
-    )
-    parser.add_argument("--out", help="Optional out file. If not specified it's printed to stdout.")
-    parser.add_argument("--progress", action="store_true", help="Show progress bar")
-    parser.add_argument(
-        "--format",
-        choices=("hashdeep", "sfv", "hashsum"),
-        default="hashsum",
-        help="Output format. SFV: Simple file verification",
-    )
-    parser.add_argument("--algorithm", choices=ALGORITHMS, default="sha1", help="Hashing algorithm for file contents.")
-    parser.add_argument("--no-names", action="store_true", help="Don't include filenames in summary hash calculation")
-    parser.add_argument("--verbose", action="store_true", help="Show debug output")
-    args = parser.parse_args()
-
+def main(args: Namespace) -> int:
     handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=MarkdownHighlighter())
     FORMAT = "%(message)s"
 
@@ -251,7 +266,13 @@ if __name__ == "__main__":
             parser.error("path has to be a directory")
 
         if args.progress:
-            progressctx = RichProgress()
+            columns = [
+                TextColumn("[progress.description]{task.description}"),
+                BarColumn(),
+                MofNCompleteColumn(),
+                TimeElapsedColumn(),
+            ]
+            progressctx = RichProgress(*columns)
         else:
             from contextlib import nullcontext
 
@@ -274,5 +295,40 @@ if __name__ == "__main__":
             parser.error("path has to be a file")
 
         hasher = DirHasher.from_file(args.path)
-        line = hasher.total_line(fformat="hashsum", include_names=not args.no_names)
-        print(line)
+        formatter = DirHasher.get_formatter_class("hashsum")(sys.stdout)
+        hasher.total_line(formatter, include_names=not args.no_names)
+
+    return 0
+
+
+if __name__ == "__main__":
+    ALGORITHMS = sorted(hashlib.algorithms_available) + ["crc32"]
+    HASHDEEP_ALGOS = sorted({"md5", "sha1", "sha256", "whirlpool", "tiger"} & set(ALGORITHMS))
+    DEFAULT_ALGO = "sha1"
+
+    parser = ArgumentParser(
+        description="calculate hash of all files in directory combined", formatter_class=ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument("path", type=Path, help="input file or directory")
+    parser.add_argument(
+        "--input",
+        choices=("fs", "file"),
+        default="fs",
+        help="fs: create file with hashes from directory path. file: read file with hashes and print summary hash of hashes.",
+    )
+    parser.add_argument("-o", "--out", help="Optional out file. If not specified it's printed to stdout.")
+    parser.add_argument("-p", "--progress", action="store_true", help="Show progress bar")
+    parser.add_argument(
+        "--format",
+        choices=("hashdeep", "sfv", "hashsum"),
+        default="hashsum",
+        help="Output format. SFV: Simple file verification",
+    )
+    parser.add_argument(
+        "--algorithm", choices=ALGORITHMS, default=DEFAULT_ALGO, help="Hashing algorithm for file contents."
+    )
+    parser.add_argument("--no-names", action="store_true", help="Don't include filenames in summary hash calculation")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Show debug output")
+    args = parser.parse_args()
+
+    sys.exit(main(args))

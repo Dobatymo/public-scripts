@@ -453,10 +453,8 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
         help="File extensions not to process",
     )
 
-    parser.add_argument("--out", help="Write output to file, otherwise to stdout")
-
-    parser.add_argument("--log", help="Write logs to file, otherwise to stderr")
-
+    parser.add_argument("--out", type=Path, help="Write output to file, otherwise to stdout")
+    parser.add_argument("--log", type=Path, help="Write logs to file, otherwise to stderr")
     parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
@@ -470,7 +468,7 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
         logging.basicConfig(level=logging.INFO, format=FORMAT, handlers=[handler])
 
     if args.log:
-        handler = logging.FileHandler(args.log, encoding="utf-8")
+        handler = logging.FileHandler(args.log, encoding="utf-8", delay=True)
         logger.addHandler(handler)
 
     with RichProgress(*get_double_format_columns()) as progress:

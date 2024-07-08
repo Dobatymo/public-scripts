@@ -155,7 +155,7 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.INFO, format=FORMAT, handlers=[handler])
 
     if args.log:
-        handler = logging.FileHandler(args.log, encoding="utf-8")
+        handler = logging.FileHandler(args.log, encoding="utf-8", delay=True)
         logger.addHandler(handler)
 
     with RichProgress(*get_double_format_columns()) as progress:
