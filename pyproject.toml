@@ -32,8 +32,13 @@ packages = [
 python = "^3.7"
 bencode-py = ">=2.0.0"
 ctypes-windows-sdk = ">=0.0.15"
-genutility = { version = ">=0.0.105", extras = [
+genutility = { version = ">=0.0.107", extras = [
+  "fileformats",
+  "filesystem",
+  "fingerprinting",
+  "hash",
   "image",
+  "metrics",
   "pillow",
   "rich",
   "torrent",
@@ -74,6 +79,7 @@ profile = "black"
 line_length = 120
 
 [tool.mypy]
+allow_redefinition = true
 ignore_missing_imports = true
 no_implicit_optional = true
 warn_redundant_casts = true

@@ -10,7 +10,7 @@ from typing import IO, Iterable, Iterator, List, Optional, Sequence, Type, Typed
 
 from genutility.callbacks import Progress as NullProgress
 from genutility.file import StdoutFile
-from genutility.filesystem import PathType, scandir_error_log_warning, scandir_rec
+from genutility.filesystem import PathType, filter_recall, scandir_error_log_warning, scandir_rec
 from genutility.hash import HashCls, Hashobj, HashobjCRC, hash_file
 from genutility.iter import CachedIterable
 from genutility.rich import MarkdownHighlighter, Progress, StdoutFileNoStyle
@@ -63,11 +63,14 @@ def _metas(paths: List[str], hashcls: HashCls, dirpath: PathType) -> Iterator[Me
         yield {"hash": hashbytes, "size": size}
 
 
-def _paths(dirpath: PathType, progress: Optional[NullProgress] = None) -> List[str]:
+def _paths(dirpath: PathType, recall: bool, progress: Optional[NullProgress] = None) -> List[str]:
     def sortkey(relpath: str) -> List[str]:
         return relpath.split("/")
 
-    it = scandir_rec(dirpath, files=True, dirs=False, relative=True, errorfunc=scandir_error_log_warning)
+    it = filter(
+        filter_recall(recall),
+        scandir_rec(dirpath, files=True, dirs=False, relative=True, errorfunc=scandir_error_log_warning),
+    )
 
     if os.name == "nt":
         normit = (entry.relpath.replace("\\", "/") for entry in it)
@@ -153,11 +156,11 @@ class DirHasher:
 
     @classmethod
     def from_fs(
-        cls, dirpath: PathType, hashcls: HashCls = hashlib.sha1, progress: Optional[NullProgress] = None
+        cls, dirpath: PathType, recall: bool, hashcls: HashCls = hashlib.sha1, progress: Optional[NullProgress] = None
     ) -> Self:
         """Creates a DirHasher instance for a filesystem folder."""
 
-        paths = _paths(dirpath, progress)
+        paths = _paths(dirpath, recall, progress)
         metas = _metas(paths, hashcls, dirpath)
 
         return cls(paths, CachedIterable(metas), get_hash_name(hashcls), fspath(dirpath), progress)
@@ -287,7 +290,7 @@ def main(args: Namespace) -> int:
                 writer = StdoutFile(args.out, "xt", encoding="utf-8")
 
             with writer as fw:
-                hasher = DirHasher.from_fs(args.path, algorithm, progress)
+                hasher = DirHasher.from_fs(args.path, args.recall, algorithm, progress)
                 hasher.to_stream(fw, include_total=True, fformat=args.format, include_names=not args.no_names)
 
     elif args.input == "file":
@@ -328,7 +331,18 @@ if __name__ == "__main__":
         "--algorithm", choices=ALGORITHMS, default=DEFAULT_ALGO, help="Hashing algorithm for file contents."
     )
     parser.add_argument("--no-names", action="store_true", help="Don't include filenames in summary hash calculation")
+    parser.add_argument(
+        "--recall",
+        action="store_true",
+        help="Download files which are currently only available online (on OneDrive for example), otherwise they are skipped.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Show debug output")
     args = parser.parse_args()
 
-    sys.exit(main(args))
+    try:
+        sys.exit(main(args))
+    except KeyboardInterrupt:
+        logger.warning("Interrupted by user. Exiting.")
+    except Exception:
+        logger.exception("Reading file failed. Exiting.")
+        sys.exit(1)

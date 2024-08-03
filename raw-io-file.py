@@ -9,12 +9,14 @@ from pathlib import Path
 from typing import Optional
 
 from genutility.datetime import now
-from genutility.filesystem import scandir_error_log_warning, scandir_rec
+from genutility.filesystem import filter_recall, scandir_error_log_warning, scandir_rec
 from genutility.logging import IsoDatetimeFormatter
 from genutility.rich import Progress
 from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
+from rich.progress import BarColumn, MofNCompleteColumn
 from rich.progress import Progress as RichProgress
+from rich.progress import TextColumn, TimeElapsedColumn
 
 """
 from cwinsdk.um.ntsecapi import LsaNtStatusToWinError
@@ -24,10 +26,6 @@ LsaNtStatusToWinError(STATUS_FILE_CORRUPT_ERROR) == ERROR_FILE_CORRUPT  # 1392
 """
 
 logger = logging.getLogger(None)
-is_windows = os.name == "nt"
-
-if is_windows:
-    from genutility.os_win import FileAttributes
 
 
 def get_block_device_size(fp) -> Optional[int]:
@@ -120,9 +118,7 @@ def read_path(path: Path, chunk_size: int, p: Progress, *, buffering: int = -1, 
     return ret
 
 
-def main(args: Namespace) -> None:
-    from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsedColumn
-
+def main(args: Namespace) -> int:
     columns = [
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
@@ -134,18 +130,13 @@ def main(args: Namespace) -> None:
         p = Progress(progress)
         if args.path.is_dir():
             for entry in p.track(
-                scandir_rec(
-                    args.path, dirs=False, files=True, follow_symlinks=False, errorfunc=scandir_error_log_warning
+                filter(
+                    filter_recall(args.recall),
+                    scandir_rec(
+                        args.path, dirs=False, files=True, follow_symlinks=False, errorfunc=scandir_error_log_warning
+                    ),
                 )
             ):
-                if (
-                    is_windows
-                    and not args.recall
-                    and FileAttributes.RECALL_ON_DATA_ACCESS in FileAttributes(entry.stat().st_file_attributes)
-                ):
-                    logger.info("Skipping online-only file `%s`", entry.path)
-                    continue
-
                 try:
                     read_path(Path(entry), args.chunk_size, p, buffering=args.buffering, use_mmap=args.mmap)
                 except OSError as e:
@@ -155,6 +146,8 @@ def main(args: Namespace) -> None:
                         logger.error("Reading %s failed: %s", entry.path, e)
         else:
             read_path(args.path, args.chunk_size, p, buffering=args.buffering, use_mmap=args.mmap)
+
+    return 0
 
 
 def setup_logging(level: int = logging.NOTSET) -> None:
@@ -215,7 +208,7 @@ if __name__ == "__main__":
         setup_logging(logging.DEBUG)
 
     try:
-        main(args)
+        sys.exit(main(args))
     except KeyboardInterrupt:
         logger.warning("Interrupted by user. Exiting.")
     except Exception:

@@ -1,8 +1,10 @@
 import logging
+import re
 from collections import defaultdict
 from hashlib import sha1
+from itertools import combinations
 from pathlib import Path
-from typing import Callable, Collection, Dict, Iterable, Iterator, List, Mapping, Optional, Tuple
+from typing import Callable, Collection, DefaultDict, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
 
 from genutility.exceptions import ParseError, Skip
 from genutility.fileformats.jfif import hash_raw_jpeg
@@ -17,7 +19,9 @@ from metrohash import MetroHash128
 from PIL import Image
 from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
+from rich.progress import BarColumn, MofNCompleteColumn
 from rich.progress import Progress as RichProgress
+from rich.progress import TextColumn, TimeElapsedColumn
 
 
 def metrohash(path: str) -> bytes:
@@ -76,10 +80,12 @@ def iter_size_path(dirs: Iterable[PathType], include_symlinks: bool = False) -> 
 
 
 def image_hash_tree(
-    dirs: Iterable[PathType], exts: Optional[Collection] = None, progressfunc=None
+    dirs: Iterable[PathType],
+    exts: Optional[Collection] = None,
+    progressfunc: Optional[Callable[[str, bytes], None]] = None,
 ) -> Tuple[BKTree, Dict[bytes, List[str]]]:
     tree = BKTree(hamming_distance)
-    map = defaultdict(list)
+    map: DefaultDict[bytes, List[str]] = defaultdict(list)
     exts = exts or fileextensions.images
 
     for dir in dirs:
@@ -97,20 +103,20 @@ def image_hash_tree(
                     except OSError:
                         logging.warning("Cannot open image: %s", entry.path)
                     else:
-                        hash = phash_blockmean(img)
-                        tree.add(hash)
-                        map[hash].append(entry.path)
-                    if progressfunc:
-                        progressfunc((entry.path, hash))
+                        hashbytes = phash_blockmean(img)
+                        tree.add(hashbytes)
+                        map[hashbytes].append(entry.path)
+                    if progressfunc is not None:
+                        progressfunc(entry.path, hashbytes)
 
     return tree, map
 
 
 def iter_size_hashes(
-    dups: Mapping[int, List[str]], hashfunc: Callable[[str], bytes]
+    dups: Mapping[int, Sequence[str]], hashfunc: Callable[[str], bytes]
 ) -> Iterator[Tuple[int, Dict[bytes, List[str]]]]:
     for size, group in dups.items():
-        hashes = defaultdict(list)
+        hashes: DefaultDict[bytes, List[str]] = defaultdict(list)
 
         for path in group:
             try:
@@ -125,20 +131,25 @@ def iter_size_hashes(
         yield size, hashes
 
 
-def write_dupegroups_dupeguru(outpath: Path, groups: Dict[Tuple[int, bytes], List[str]]):
-    from itertools import combinations
+def write_dupegroups_dupeguru(outpath: Path, pathgroups: Iterable[Sequence[str]]):
     from xml.etree import ElementTree as ET
 
     root = ET.Element("results")
+    root.text = "\n"
+    root.tail = "\n"
 
-    for (size, hashbytes), paths in groups.items():
+    for paths in pathgroups:
         group = ET.SubElement(root, "group")
+        group.text = "\n"
+        group.tail = "\n"
 
         for filepath in paths:
-            ET.SubElement(group, "file", path=filepath, words="", is_ref="n", marked="n")
+            element = ET.SubElement(group, "file", path=filepath, words="", is_ref="n", marked="n")
+            element.tail = "\n"
 
         for i, j in combinations(range(len(paths)), 2):
-            ET.SubElement(group, "match", first=str(i), second=str(j), percentage="100")
+            element = ET.SubElement(group, "match", first=str(i), second=str(j), percentage="100")
+            element.tail = "\n"
 
     tree = ET.ElementTree(root)
     tree.write(outpath, encoding="utf-8")
@@ -203,16 +214,22 @@ def dupegroups_no_size(
 
 if __name__ == "__main__":
     import csv
-    from argparse import ArgumentParser
+    from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
     from genutility.args import is_dir
     from genutility.file import StdoutFile
 
     hashfuncs = {"metrohash": metrohash, "no-meta-sha1": nometahash}
 
-    parser = ArgumentParser()
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("directories", type=is_dir, nargs="+", help="Directory to search")
-    parser.add_argument("-o", "--out", help="Optional output file path. If not given it will be printed to stdout.")
+    parser.add_argument(
+        "-o",
+        "--out",
+        metavar="PATH",
+        type=Path,
+        help="Optional output file path. If not given it will be printed to stdout.",
+    )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print debug information")
     parser.add_argument(
         "--no-size", action="store_true", help="Hash files without excluding matches by size first. Don't use."
@@ -226,6 +243,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dupeguru", metavar="PATH", type=Path, help="Output the results in Dupeguru format to this path."
     )
+    parser.add_argument(
+        "--regex",
+        nargs=2,
+        metavar=("PATTERN", "REPL"),
+        default=("^(.*)$", r"\1"),
+        help="Extract key to group by from filename.",
+    )
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--exact", action="store_true", help="Use exact matches to find duplicates")
@@ -233,6 +257,11 @@ if __name__ == "__main__":
         "--images", action="store_true", help="Use `Block Mean Value Based Image Perceptual Hashing` to find duplicates"
     )
     group.add_argument("--audio", action="store_true")
+    group.add_argument(
+        "--filename",
+        action="store_true",
+        help="Search for duplicated files by filename. Use --regex extract group key from filename.",
+    )
 
     args = parser.parse_args()
 
@@ -244,7 +273,13 @@ if __name__ == "__main__":
     else:
         logging.basicConfig(level=logging.INFO, format=FORMAT, handlers=[handler])
 
-    with RichProgress(disable=not args.verbose) as progress:
+    columns = [
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeElapsedColumn(),
+    ]
+    with RichProgress(*columns, disable=not args.verbose) as progress:
         p = Progress(progress)
 
         if args.exact:
@@ -253,38 +288,45 @@ if __name__ == "__main__":
             if args.no_size:
                 groups = dupegroups_no_size(args.directories, hashfunc, p, args.include_symlinks)
 
+                if args.dupeguru:
+                    pathgroups = ([path for path, size in paths_sizes] for paths_sizes in groups.values())
+                    write_dupegroups_dupeguru(args.dupeguru, pathgroups)
+
                 with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
                     csvwriter = csv.writer(csvfile)
                     csvwriter.writerow(["hash", "path", "size"])
-                    for hash, paths_sizes in groups.items():
+                    for hashbytes, paths_sizes in groups.items():
                         for path, size in paths_sizes:
-                            csvwriter.writerow([hash.hex(), path, size])
+                            csvwriter.writerow([hashbytes.hex(), path, size])
 
             else:
                 groups = dupegroups(args.directories, hashfunc, p, args.include_symlinks)
 
                 if args.dupeguru:
-                    write_dupegroups_dupeguru(args.dupeguru, groups)
+                    write_dupegroups_dupeguru(args.dupeguru, groups.values())
 
                 with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
                     csvwriter = csv.writer(csvfile)
                     csvwriter.writerow(["size", "hash", "path"])
-                    for (size, hash), paths in groups.items():
+                    for (size, hashbytes), paths in groups.items():
                         for path in paths:
-                            csvwriter.writerow([size, hash.hex(), path])
+                            csvwriter.writerow([size, hashbytes.hex(), path])
 
         elif args.images:
+            if args.dupeguru:
+                parser.error("--dupeguru not yet supported for --images")
+
             with StdoutFile(args.out, "xt", encoding="utf-8") as fw:
                 with p.task(description="Hashing images...") as task:
-                    tree, map = image_hash_tree(args.directories, progressfunc=lambda _: task.advance(1))
+                    tree, map = image_hash_tree(args.directories, progressfunc=lambda _path, _hash: task.advance(1))
 
                 for d in range(100):
                     groups = []
 
                     for hashgroup in tree.find_by_distance(d):
                         files = []
-                        for hash in hashgroup:
-                            files.extend(map[hash])
+                        for hashbytes in hashgroup:
+                            files.extend(map[hashbytes])
                         groups.append(files)
 
                     if groups:
@@ -296,3 +338,35 @@ if __name__ == "__main__":
 
         elif args.audio:
             parser.error("Duplicate search for audio is no implemented yet")
+
+        elif args.filename:
+            dups: DefaultDict[str, List[Tuple[str, int]]] = defaultdict(list)
+
+            pattern_, repl = args.regex
+            pattern = re.compile(pattern_)
+
+            logging.info("Using pattern `%s` with replacement `%s`", pattern.pattern, repl)
+
+            total = 0
+            for size, path in p.track(
+                iter_size_path(args.directories, args.include_symlinks), description="Collecting files..."
+            ):
+                key, nsubs = pattern.subn(repl, Path(path).name)
+                if nsubs > 0:
+                    dups[key].append((path, size))
+                    total += 1
+            logging.info("Found %s groups in %d files", len(dups), total)
+
+            dups = {k: v for k, v in dups.items() if len(v) > 1}
+            logging.info("Found %s duplicate groups", len(dups))
+
+            if args.dupeguru:
+                pathgroups = ([path for path, size in paths_sizes] for paths_sizes in dups.values())
+                write_dupegroups_dupeguru(args.dupeguru, pathgroups)
+
+            with StdoutFile(args.out, "xt", encoding="utf-8", newline="") as csvfile:
+                csvwriter = csv.writer(csvfile)
+                csvwriter.writerow(["key", "path", "size"])
+                for key, paths_sizes in dups.items():
+                    for path, size in paths_sizes:
+                        csvwriter.writerow([key, path, size])
