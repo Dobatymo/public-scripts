@@ -6,10 +6,9 @@ requires = [
 
 [project]
 readme = "readme.md"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.7",
   "Programming Language :: Python :: 3.8",
   "Programming Language :: Python :: 3.9",
   "Programming Language :: Python :: 3.10",
@@ -29,7 +28,7 @@ packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "^3.8"
 bencode-py = ">=2.0.0"
 ctypes-windows-sdk = ">=0.0.15"
 genutility = { version = ">=0.0.107", extras = [
@@ -47,15 +46,18 @@ genutility = { version = ">=0.0.107", extras = [
 libtorrent = ">=2.0.5"
 metrictrees = ">0"
 metrohash-python = ">0"
-mutagen = ">0"
+more-itertools = ">0"
+mutagen = ">=1"
 pillow = ">=9.1.0"
-pyexiv2 = ">0"
-pymongo = ">0"
-pypyodbc = ">0"
+pyexiv2 = ">=2"
+pymongo = ">=4"
+pypyodbc = ">=1"
 pywin32 = ">0"
-requests = ">0"
-rich = ">0"
-send2trash = ">0"
+requests = ">=2"
+rich = ">=12.3.0"
+scikit-image = ">=0.16"
+send2trash = ">=1"
+tqdm = ">=4"
 typing-extensions = ">=4.6.0"
 
 [tool.black]
