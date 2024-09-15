@@ -12,7 +12,7 @@ from multiprocessing import Manager, RLock, freeze_support
 from pathlib import Path
 from shutil import get_terminal_size
 from threading import Lock
-from typing import Any, Dict, List, MutableMapping, Optional, Set, Tuple, Union
+from typing import Any, Collection, Dict, List, MutableMapping, Optional, Set, Tuple, Union
 
 import cv2
 import matplotlib.pyplot as plt
@@ -105,17 +105,19 @@ def process(
 
 
 def process_paths(
-    pairs: List[Tuple[Path, Path]],
+    pairs: Collection[Tuple[Path, Path]],
     metric: str,
     limit: Optional[int],
     out: Union[str, os.PathLike],
     workers: Optional[int],
 ) -> None:
     with json_lines.from_path(out, "wt") as fw:
+        if not pairs:
+            return
         tqdm.set_lock(RLock())
 
         with ProcessPoolExecutor(
-            max_workers=workers, initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),)
+            max_workers=min(workers, len(pairs)), initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),)
         ) as executor, Manager() as manager:
             pids = manager.dict()
             lock = manager.Lock()
@@ -184,6 +186,11 @@ def action_analyze(args: Namespace) -> int:
                 scores = obj["scores"]
                 func = agg_funcs[metric]
                 funcname = func.__name__
+                if scores is None:
+                    error = obj["error"]
+                    print(f"{filename}: {error}")
+                    continue
+
                 agg_val = func(scores)
 
                 title = f"{filename}: {funcname}({metric})={agg_val}"
