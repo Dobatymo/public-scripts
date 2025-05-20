@@ -14,9 +14,8 @@ from genutility.logging import IsoDatetimeFormatter
 from genutility.rich import Progress
 from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
-from rich.progress import BarColumn, MofNCompleteColumn
+from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsedColumn
 from rich.progress import Progress as RichProgress
-from rich.progress import TextColumn, TimeElapsedColumn
 
 """
 from cwinsdk.um.ntsecapi import LsaNtStatusToWinError

@@ -671,9 +671,9 @@ class SmartDeviceSat(SmartDevice):
         class SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER(Structure):
             _fields_ = [("spt", SCSI_PASS_THROUGH_DIRECT), ("SenseInfo", UCHAR * self.SENSE_INFO_LEN)]
 
-        assert (
-            SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER.SenseInfo.offset % 8 == 0
-        ), SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER.SenseInfo.offset
+        assert SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER.SenseInfo.offset % 8 == 0, (
+            SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER.SenseInfo.offset
+        )
 
         sptb = SCSI_PASS_THROUGH_DIRECT_WITH_BUFFER()
         DataBuf = outstruct()
@@ -979,8 +979,33 @@ def decode_temp_wdc(data: bytes, specific: bytes) -> str:
     return f"cur={cur} min={min} max={max}"
 
 
+def decode_spinup_time_wdc(data: bytes, specific: bytes) -> str:
+    """confirmed for WD, TOSHIBA"""
+
+    cur, avg = unpack("<HH", data)
+    return f"cur={cur} avg={avg}"
+
+
 def decode_power_on_wdc(data: bytes, specific: bytes) -> int:
     """confirmed for WD, HGST and TOSHIBA"""
+
+    return int.from_bytes(data, "little")
+
+
+def decode_reallocated_on_wdc(data: bytes, specific: bytes) -> int:
+    """confirmed for WD"""
+
+    return int.from_bytes(data, "little")
+
+
+def decode_pending_count_wdc(data: bytes, specific: bytes) -> int:
+    """confirmed for WD"""
+
+    return int.from_bytes(data, "little")
+
+
+def decode_uncorrectable_count_wdc(data: bytes, specific: bytes) -> int:
+    """confirmed for WD"""
 
     return int.from_bytes(data, "little")
 
@@ -1001,9 +1026,13 @@ def smart_info_json(smart_attr, smart_thresh) -> Dict[str, Any]:
     smart = {}
 
     decode = {
+        3: decode_spinup_time_wdc,
         9: decode_power_on_wdc,
+        5: decode_reallocated_on_wdc,
         12: decode_power_cycle_count_wdc,
         194: decode_temp_wdc,
+        197: decode_pending_count_wdc,
+        198: decode_uncorrectable_count_wdc,
         199: decode_ultra_dma_crc_error_count_wdc,
     }
 

@@ -1,14 +1,34 @@
 import logging
 from argparse import ArgumentParser
 from pathlib import Path
+from typing import Container, Iterator
 
 from genutility.args import between, existing_path, suffix
 from genutility.filesystem import fileextensions
+from genutility.rich import Progress
 from genutility.videofile import NoGoodFrame, grab_pic
 from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
+from rich.progress import Progress as RichProgress
 
 logger = logging.getLogger(__name__)
+
+
+def iterfiles(inpath: Path, recursive: bool, suffixes: Container[str]) -> Iterator[Path]:
+    if recursive:
+        it = inpath.rglob("*")
+    else:
+        it = inpath.glob("*")
+
+    for path_in in it:
+        if not path_in.is_file():
+            continue
+
+        if path_in.suffix.lower() not in suffixes:
+            logger.debug("Skipping non-video file %s", path_in)
+            continue
+
+        yield path_in
 
 
 def main():
@@ -58,32 +78,33 @@ def main():
     elif args.inpath.is_dir():
         video_suffixes = {"." + ext for ext in fileextensions.video}
 
-        if args.recursive:
-            it = args.inpath.rglob("*")
-        else:
-            it = args.inpath.glob("*")
+        it = iterfiles(args.inpath, args.recursive, video_suffixes)
+        if not args.recursive:
+            it = sorted(it)
 
-        for path_in in it:
-            if not path_in.is_file():
-                continue
+        with RichProgress() as p:
+            progress = Progress(p)
+            for path_in in progress.track(it, description="Reading files"):
+                if not path_in.is_file():
+                    continue
 
-            if path_in.suffix.lower() not in video_suffixes:
-                logger.debug("Skipping non-video file %s", path_in)
-                continue
+                if path_in.suffix.lower() not in video_suffixes:
+                    logger.debug("Skipping non-video file %s", path_in)
+                    continue
 
-            if args.outpath is None:
-                path_out = path_in.with_suffix(args.format)
-            else:
-                path_out = args.outpath / path_in.relative_to(args.inpath)
-                path_out = path_out.with_suffix(args.format)
+                if args.outpath is None:
+                    path_out = path_in.with_suffix(args.format)
+                else:
+                    path_out = args.outpath / path_in.relative_to(args.inpath)
+                    path_out = path_out.with_suffix(args.format)
 
-            logger.info("Processing %s", path_in)
-            try:
-                grab_pic(path_in, path_out, pos, args.overwrite, args.backend)
-            except FileExistsError:
-                logger.info("Skipping existing file %s", path_in)
-            except NoGoodFrame as e:
-                logger.warning("Could not grab frame from %s: %s", path_in, e)
+                logger.info("Processing %s", path_in)
+                try:
+                    grab_pic(path_in, path_out, pos, args.overwrite, args.backend)
+                except FileExistsError:
+                    logger.info("Skipping existing file %s", path_in)
+                except NoGoodFrame as e:
+                    logger.warning("Could not grab frame from %s: %s", path_in, e)
     else:
         parser.error("inpath is neither file nor directory")
 

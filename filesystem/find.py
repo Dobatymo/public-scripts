@@ -188,7 +188,7 @@ def _find_parent_paths(path, file_name: Optional[str] = None, dir_name: Optional
     dirs = dir_name is not None
 
     assert file_name or dir_name  # for mypy
-    name = (file_name or dir_name).lower()
+    name = (file_name or dir_name).lower()  # type: ignore[union-attr]
 
     for entry in scandir_rec(path, files=files, dirs=dirs, errorfunc=scandir_error_log_warning):
         if entry.name.lower() != name:
@@ -246,14 +246,23 @@ def _find_empty_dirs(basepath: Path, pattern: str = "*") -> Iterator[str]:
 def empty_dirs(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
         for path in p.track(_find_empty_dirs(args.path, args.pattern)):
-            if args.remove:
+            if args.action == "print":
+                fw.write(f"{path}\n")
+            elif args.action == "remove":
                 try:
                     os.rmdir(path)
                     logger.info("Removed `%s`", path)
                 except OSError as e:
                     logger.warning("Removing `%s` failed: %s", path, e)
+            elif args.action == "trash":
+                try:
+                    send2trash(path)
+                    logger.info("Trashed `%s`", path)
+                except OSError as e:
+                    logger.warning("Trashing `%s` failed: %s", path, e)
             else:
-                fw.write(f"{path}\n")
+                raise ValueError(f"Invalid action: {args.action}")
+    return 0
 
 
 def long_paths(args: Namespace, progress: Progress) -> int:
@@ -263,6 +272,7 @@ def long_paths(args: Namespace, progress: Progress) -> int:
         for entry in p.track(scandir_rec(args.path, files=True, dirs=True, rec=True, relative=True)):
             if len(entry.relpath) >= args.length:
                 csvwriter.writerow([len(entry.relpath), entry.relpath])
+    return 0
 
 
 def exact_content_match(args: Namespace, progress: Progress) -> int:
@@ -282,6 +292,7 @@ def exact_content_match(args: Namespace, progress: Progress) -> int:
                             logger.warning("Trashing `%s` failed: %s", path, e)
                     else:
                         fw.write(f"{path}\n")
+    return 0
 
 
 def transformed_dups(args: Namespace, progress: Progress) -> int:
@@ -310,6 +321,8 @@ def transformed_dups(args: Namespace, progress: Progress) -> int:
             for path in paths:
                 fw.write(f"{path}\n")
             fw.write("\n")
+
+    return 0
 
 
 if __name__ == "__main__":
@@ -395,7 +408,12 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
     )
     subparser_g.set_defaults(func=empty_dirs)
     subparser_g.add_argument("-p", "--pattern", default="*", help="fnmatch pattern")
-    subparser_g.add_argument("--remove", action="store_true", help="Remove matching empty directories")
+    subparser_g.add_argument(
+        "--action",
+        choices=("print", "remove", "trash"),
+        default="print",
+        help="What to do with the found empty directories",
+    )
 
     subparser_h = subparsers.add_parser(
         "long-paths", formatter_class=ArgumentDefaultsHelpFormatter, help="Find long paths"

@@ -61,14 +61,14 @@ class QBittorrentMeta:
         try:
             return self.map[(name, size)]
         except KeyError:
-            raise NotFound(f"Could not find infohash for name={name}, size={size}")
+            raise NotFound(f"Could not find infohash for name={name}, size={size}") from None
 
     def read_fastresume_file(self, info_hash: str) -> dict:
         fastresumepath = self.btpath / f"{info_hash}.fastresume"
         try:
             bb = read_torrent(fastresumepath)
         except FileNotFoundError:
-            raise FileNotFoundError(f"Could not find fastresume file: {fastresumepath}")
+            raise FileNotFoundError(f"Could not find fastresume file: {fastresumepath}") from None
 
         if bb["qBt-savePath"] != bb["save_path"]:
             raise AssertionError("Save paths don't match: {bb['qBt-savePath']} vs {bb['save_path']}")

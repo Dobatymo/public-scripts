@@ -8,20 +8,19 @@ from concurrent.futures import Future, ProcessPoolExecutor
 from functools import partial
 from itertools import islice
 from math import ceil
-from multiprocessing import Manager, RLock, freeze_support
+from multiprocessing import freeze_support
 from pathlib import Path
 from shutil import get_terminal_size
-from threading import Lock
-from typing import Any, Collection, Dict, List, MutableMapping, Optional, Set, Tuple, Union
+from typing import Any, Collection, Dict, List, Optional, Set, Tuple, Union
 
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
 from genutility.cv import iter_video
 from genutility.json import json_lines
+from genutility.tqdm import TqdmMultiprocessing, TqdmProcess
 from more_itertools import zip_equal
 from skimage.metrics import mean_squared_error, peak_signal_noise_ratio, structural_similarity
-from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
 
@@ -81,23 +80,13 @@ def process(
     path1: Path,
     path2: Path,
     metric: str,
-    lock: Lock,
-    pids: MutableMapping[int, int],
+    progress: TqdmProcess,
     limit: Optional[int] = None,
 ) -> List[float]:
     scores: List[float] = []
     it = zip_equal(iter_video(path1), iter_video(path2))
 
-    with lock:
-        position = pids.setdefault(os.getpid(), len(pids))
-
-    for image1, image2 in tqdm(
-        islice(it, limit),
-        desc=limit_desc(path1.name),
-        total=limit,
-        mininterval=0.5,
-        position=position,
-    ):
+    for image1, image2 in progress.track(islice(it, limit), desc=limit_desc(path1.name), total=limit, mininterval=0.5):
         score = process_img(image1, image2, metric)
         scores.append(score)
 
@@ -114,33 +103,31 @@ def process_paths(
     with json_lines.from_path(out, "wt") as fw:
         if not pairs:
             return
-        tqdm.set_lock(RLock())
 
-        with ProcessPoolExecutor(
-            max_workers=min(workers, len(pairs)), initializer=tqdm.set_lock, initargs=(tqdm.get_lock(),)
-        ) as executor, Manager() as manager:
-            pids = manager.dict()
-            lock = manager.Lock()
-            futures: Dict[Future, Dict[str, Any]] = {}
+        with TqdmMultiprocessing() as progress:
+            with ProcessPoolExecutor(
+                max_workers=min(workers, len(pairs)), initializer=progress.initializer, initargs=progress.initargs
+            ) as executor:
+                futures: Dict[Future, Dict[str, Any]] = {}
 
-            for path1, path2 in pairs:
-                future = executor.submit(process, path1, path2, metric, lock, pids, limit)
-                futures[future] = {
-                    "metric": metric,
-                    "path1": os.fspath(path1),
-                    "path2": os.fspath(path2),
-                }
+                for path1, path2 in pairs:
+                    future = executor.submit(process, path1, path2, metric, progress, limit)
+                    futures[future] = {
+                        "metric": metric,
+                        "path1": os.fspath(path1),
+                        "path2": os.fspath(path2),
+                    }
 
-            for future, meta in futures.items():
-                try:
-                    meta["scores"] = future.result()
-                    meta["error"] = None
-                except Exception as e:
-                    logger.error("Failed to compare %s and %s: %s", path1, path2, e)
-                    meta["scores"] = None
-                    meta["error"] = str(e)
-                fw.write(meta)
-                fw.flush()
+                for future, meta in futures.items():
+                    try:
+                        meta["scores"] = future.result()
+                        meta["error"] = None
+                    except Exception as e:
+                        logger.error("Failed to compare %s and %s: %s", path1, path2, e)
+                        meta["scores"] = None
+                        meta["error"] = str(e)
+                    fw.write(meta)
+                    fw.flush()
 
 
 def unique_filenames_by_stem(path: Path) -> Set[str]:
@@ -165,14 +152,19 @@ def intersect_files(path1: Path, filesnames1: Set[str], path2: Path, filesnames2
 
 
 def action_compare(args: Namespace) -> int:
-    if args.ignore_ext:
-        a = unique_filenames_by_stem(args.path1)
-        b = unique_filenames_by_stem(args.path2)
+    if args.path1.is_file() and args.path2.is_file():
+        pairs = [(args.path1, args.path2)]
+    elif args.path1.is_dir() and args.path2.is_dir():
+        if args.ignore_ext:
+            a = unique_filenames_by_stem(args.path1)
+            b = unique_filenames_by_stem(args.path2)
+        else:
+            a = {p.name for p in args.path1.iterdir() if p.is_file()}
+            b = {p.name for p in args.path2.iterdir() if p.is_file()}
+        pairs = intersect_files(args.path1, a, args.path2, b)
     else:
-        a = {p.name for p in args.path1.iterdir() if p.is_file()}
-        b = {p.name for p in args.path2.iterdir() if p.is_file()}
+        raise ValueError("Cannot compare files and directories")
 
-    pairs = intersect_files(args.path1, a, args.path2, b)
     process_paths(pairs, args.metric, args.limit, args.out, args.workers)
     return 0
 

@@ -4,7 +4,7 @@ from ctypes import byref, create_unicode_buffer
 from ctypes.wintypes import DWORD
 from enum import Enum, Flag, IntEnum, IntFlag
 from shutil import disk_usage
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from cwinsdk.shared import winerror
 from cwinsdk.shared.guiddef import GUID
@@ -221,11 +221,17 @@ def print_volume_by_guid_path(volume_guid_path) -> None:
             _print_all(vol)
 
 
-def drive_to_volume_map():
-    out = {}
+def drive_to_volume_map() -> Dict[str, int]:
+    out: Dict[str, int] = {}
     for volume_guid_path in find_volumes():
-        with Volume.from_volume_guid_path(volume_guid_path) as vol:
-            out[volume_guid_path] = vol.get_device_number()
+        try:
+            with Volume.from_volume_guid_path(volume_guid_path) as vol:
+                out[volume_guid_path] = vol.get_device_number()
+        except OSError as e:
+            if e.winerror in (21,):
+                logging.warning("Couldn't get device number for %s", volume_guid_path)
+            else:
+                raise
     return out
 
 
@@ -362,7 +368,7 @@ def print_filesystem_statistics(stats: List[dict]) -> None:
 
     print(
         f"""filesystem_statistics:
-  type: {d['Filesystem']}, user read: {d['Total user read']}, user write: {d['Total user write']}, meta read: {d['Total meta read']}, meta write: {d['"Total meta write']} bytes"""
+  type: {d["Filesystem"]}, user read: {d["Total user read"]}, user write: {d["Total user write"]}, meta read: {d["Total meta read"]}, meta write: {d['"Total meta write']} bytes"""
     )
 
 

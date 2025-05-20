@@ -9,14 +9,17 @@ from requests.exceptions import ConnectionError, HTTPError, InvalidURL, MissingS
 __version__ = "0.1"
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
-    parser = ArgumentParser()
+    DEFAULT_TIMEOUT = 600
+
+    parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--seconds", metavar="N", type=float, help="Wait for N seconds")
     group.add_argument("--url", type=str, help="Wait until connection to URL succeeds")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--version", action="version", version=__version__)
+    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Network timeout")
     parser.add_argument(
         "--max-tries",
         metavar="N",
@@ -48,7 +51,7 @@ if __name__ == "__main__":
     elif args.url:
         for i in range_count(0, args.max_tries):
             try:
-                r = requests.head(args.url, allow_redirects=False, verify=not args.ssl_insecure)
+                r = requests.head(args.url, allow_redirects=False, verify=not args.ssl_insecure, timeout=args.timeout)
                 r.raise_for_status()
                 sys.exit(0)
             except (ConnectionError, Timeout) as e:

@@ -63,7 +63,7 @@ def read_ea(path: str, buffer_size: int = DEFAULT_BUFFER_SIZE) -> List[EA]:
             return []
         else:
             code = RtlNtStatusToDosError(e.winerror)
-            raise WinError(code)
+            raise WinError(code) from None
     finally:
         CloseHandle(FileHandle)
 

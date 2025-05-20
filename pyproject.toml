@@ -19,19 +19,18 @@ classifiers = [
 [tool.poetry]
 name = "public-scripts"
 version = "0.1.0"
-description = ""
+description = "A collection of scripts"
 authors = [
   "Dobatymo <Dobatymo@users.noreply.github.com>",
 ]
-readme = "README.md"
 packages = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.8"
+python = ">=3.8"
 bencode-py = ">=2.0.0"
 ctypes-windows-sdk = ">=0.0.15"
-genutility = { version = ">=0.0.107", extras = [
+genutility = { version = ">=0.0.114", extras = [
   "fileformats",
   "filesystem",
   "fingerprinting",
@@ -41,18 +40,19 @@ genutility = { version = ">=0.0.107", extras = [
   "pillow",
   "rich",
   "torrent",
+  "tqdm",
   "videofile",
 ] }
 libtorrent = ">=2.0.5"
-metrictrees = ">0"
-metrohash-python = ">0"
-more-itertools = ">0"
+metrictrees = ">=0.0.1"
+metrohash-python = ">=1"
+more-itertools = ">=10"
 mutagen = ">=1"
 pillow = ">=9.1.0"
 pyexiv2 = ">=2"
 pymongo = ">=4"
 pypyodbc = ">=1"
-pywin32 = ">0"
+pywin32 = ">=306"
 requests = ">=2"
 rich = ">=12.3.0"
 scikit-image = ">=0.16"
@@ -65,16 +65,11 @@ line-length = 120
 
 [tool.ruff]
 line-length = 120
-
 lint.extend-select = [
   "B",
   "I",
 ]
-
-lint.ignore = [
-  "B011",
-  "B904",
-]
+lint.ignore = [ "B011" ]
 
 [tool.isort]
 profile = "black"
@@ -84,6 +79,7 @@ line_length = 120
 allow_redefinition = true
 ignore_missing_imports = true
 no_implicit_optional = true
+show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_unreachable = true

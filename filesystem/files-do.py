@@ -69,6 +69,8 @@ def move(args: Namespace, progress: Progress) -> int:
         else:
             logger.info("Moving `%s` to `%s`", srcpath, destpath)
 
+    return 0
+
 
 def trash(args: Namespace, progress: Progress) -> int:
     df = read_csv(args.csv)

@@ -15,6 +15,6 @@ if __name__ == "__main__":
         tmpName = "open-copy.tmp"
         tmpPath = os.path.join(tempfile.gettempdir(), tempfile.gettempprefix() + tmpName)
         shutil.copy(args.path, tmpPath)
-        errorquit(subprocess.call(tmpPath, shell=True))
+        errorquit(subprocess.call(tmpPath, shell=True))  # nosec: B602
     except Exception as e:
         waitquit(exception=e)

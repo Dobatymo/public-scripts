@@ -15,9 +15,8 @@ from genutility.hash import HashCls, Hashobj, HashobjCRC, hash_file
 from genutility.iter import CachedIterable
 from genutility.rich import MarkdownHighlighter, Progress, StdoutFileNoStyle
 from rich.logging import RichHandler
-from rich.progress import BarColumn, MofNCompleteColumn
+from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsedColumn
 from rich.progress import Progress as RichProgress
-from rich.progress import TextColumn, TimeElapsedColumn
 from typing_extensions import NotRequired, Self
 
 logger = logging.getLogger(__name__)
@@ -145,7 +144,7 @@ class DirHasher:
         try:
             return cls.formatter[fformat]
         except KeyError:
-            raise ValueError(f"Invalid fformat: {fformat}")
+            raise ValueError(f"Invalid fformat: {fformat}") from None
 
     @property
     def toppath(self) -> str:

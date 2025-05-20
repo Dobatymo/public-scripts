@@ -275,7 +275,7 @@ def create_sheet_cli(
             headertext = None
 
         sheet = create_sheet(
-            progress.track(video.iterate(), total=num_frames, description="Reading frames"),
+            progress.track(video.iterate(), total=num_frames, description="Reading frames", transient=True),
             dar,
             cols,
             rows,
@@ -401,7 +401,7 @@ def main():
         if args.recursive:
             it = args.inpath.rglob("*")
         else:
-            it = args.inpath.glob("*")
+            it = sorted(args.inpath.glob("*"))
 
         with RichProgress() as p:
             progress = Progress(p)

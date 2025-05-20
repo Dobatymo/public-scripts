@@ -55,7 +55,7 @@ def readblocklimited(fr: BinaryIO, chunk_size: int, sector_size: int, retries: R
             data = fr.read(sector_size)
         except OSError as e:  # OSError on python 2, PermissionError on python 3
             if e.errno == errno.EINVAL:
-                raise OutOfBounds(f"Out of bounds at {pos} (sector {pos // sector_size})")
+                raise OutOfBounds(f"Out of bounds at {pos} (sector {pos // sector_size})") from e
 
             """
             windows:
@@ -180,7 +180,7 @@ def blockfileiterignore(
             fr.seek(total_size)
         except OSError as e:
             if e.winerror == ERROR_INVALID_PARAMETER:
-                raise ValueError("Can only read extended data on volumes not drives") from None
+                raise ValueError("Can only read extended data on volumes not drives") from e
             else:
                 raise
 

@@ -19,9 +19,8 @@ from metrohash import MetroHash128
 from PIL import Image
 from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
-from rich.progress import BarColumn, MofNCompleteColumn
+from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsedColumn
 from rich.progress import Progress as RichProgress
-from rich.progress import TextColumn, TimeElapsedColumn
 
 
 def metrohash(path: str) -> bytes:
@@ -32,28 +31,28 @@ def nometahash(path: str) -> bytes:
     lowerpath = path.lower()
 
     if lowerpath.endswith(".jpg") or lowerpath.endswith(".jpeg"):
-        hashobj = sha1()
+        hashobj = sha1()  # nosec: B303
         try:
             hash_raw_jpeg(path, hashobj)
         except ParseError as e:
             logging.info("Skipping invalid JPEG file %s: %s", path, e)
-            raise Skip()
-        except EOFError:
+            raise Skip() from e
+        except EOFError as e:
             logging.info("Skipping truncated JPEG file %s", path)
-            raise Skip()
+            raise Skip() from e
 
         return hashobj.digest()
 
     elif lowerpath.endswith(".png"):
-        hashobj = sha1()
+        hashobj = sha1()  # nosec: B303
         try:
             hash_raw_png(path, hashobj)
         except ParseError as e:
             logging.info("Skipping invalid PNG file %s: %s", path, e)
-            raise Skip()
-        except EOFError:
+            raise Skip() from e
+        except EOFError as e:
             logging.info("Skipping truncated PNG file %s", path)
-            raise Skip()
+            raise Skip() from e
 
         return hashobj.digest()
 
