@@ -1,9 +1,20 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "ctypes-windows-sdk>=0.0.16",
+#     "genutility",
+# ]
+# ///
+from argparse import ArgumentParser
+from pprint import pprint
+from typing import Iterator
+
 from cwinsdk.shared.guiddef import GUID
 from cwinsdk.um import winioctl
 from genutility.win.device import Drive, enum_device_paths, enum_disks
 
 
-def enum_volumes():
+def enum_volumes() -> Iterator[dict]:
     device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_VOLUME)
     for device_path in device_paths:
         out = {"DevicePath": device_path}
@@ -13,7 +24,7 @@ def enum_volumes():
             yield out
 
 
-def enum_partition():
+def enum_partition() -> Iterator[dict]:
     device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_PARTITION)
     for device_path in device_paths:
         out = {"DevicePath": device_path}
@@ -23,10 +34,7 @@ def enum_partition():
             yield out
 
 
-if __name__ == "__main__":
-    from argparse import ArgumentParser
-    from pprint import pprint
-
+def main() -> None:
     typemap = {"disk": enum_disks, "volume": enum_volumes, "partition": enum_partition}
 
     parser = ArgumentParser()
@@ -47,7 +55,7 @@ if __name__ == "__main__":
 
     if args.device_type is not None:
         print("--- drives ---")
-        for d in {"disk": enum_disks, "volume": enum_volumes, "partition": enum_partition}[args.device_type]():
+        for d in typemap[args.device_type]():
             pprint(d)
 
     elif args.setup_class_guid is not None:
@@ -76,3 +84,7 @@ if __name__ == "__main__":
             print(device_info)
         for device_path in device_paths:
             print(device_path)
+
+
+if __name__ == "__main__":
+    main()

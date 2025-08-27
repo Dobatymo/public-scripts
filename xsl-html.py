@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[xsl]",
+# ]
+# ///
 from genutility.xsl import xml_xslt_to_xhtml
 
 if __name__ == "__main__":

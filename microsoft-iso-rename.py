@@ -1,10 +1,21 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "beautifulsoup4",
+#     "genutility[args,atomic,hash]",
+#     "requests",
+#     "typing-extensions",
+# ]
+# ///
 import json
 import logging
+from argparse import ArgumentParser
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
+from genutility.args import is_dir
 from genutility.atomic import sopen
 from genutility.hash import sha1_hash_file
 from typing_extensions import Self
@@ -182,11 +193,7 @@ def rename_all_in_folder(basepath: Path, do: bool, retry: bool, move_to_subdir: 
                 path.rename(newpath)
 
 
-if __name__ == "__main__":
-    from argparse import ArgumentParser
-
-    from genutility.args import is_dir
-
+def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("path", type=is_dir, default=Path())
     parser.add_argument("-r", "--recursive", action="store_true")
@@ -205,3 +212,7 @@ if __name__ == "__main__":
     logging.getLogger("urllib3.connectionpool").setLevel(logging.INFO)
 
     rename_all_in_folder(args.path, args.do, args.retry, args.move_to_subdir, args.recursive)
+
+
+if __name__ == "__main__":
+    main()

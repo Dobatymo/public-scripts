@@ -1,5 +1,14 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[args,json,rich,signal]",
+#     "pymongo",
+#     "rich",
+# ]
+# ///
 import json
 import logging
+from argparse import ArgumentParser, Namespace
 
 from bson import json_util
 from genutility.args import json_file
@@ -10,7 +19,7 @@ from pymongo import MongoClient
 from rich.progress import Progress as RichProgress
 
 
-def main(args):
+def do(args: Namespace) -> None:
     client = MongoClient(
         args.connection_string,
         tlsCAFile=args.tls_ca_file,
@@ -24,14 +33,14 @@ def main(args):
         print(col.count())
     elif args.find is not None or args.agg is not None:
         if not args.out:
-            parser.error("--out must be given for --find or --agg")
+            raise ValueError("out is required for find or agg")
 
         if args.find:
             cursor = col.find(args.find, no_cursor_timeout=True)
         elif args.agg:
             cursor = col.aggregate(args.agg)
         else:
-            parser.error("--find or --agg must be specified")
+            raise ValueError("find or agg must be specified")
 
         with cursor, RichProgress() as progress:
             p = Progress(progress)
@@ -47,9 +56,7 @@ def main(args):
                             raise
 
 
-if __name__ == "__main__":
-    from argparse import ArgumentParser
-
+def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("connection_string", metavar="connection-string", help="MongoDB connection URI")
     parser.add_argument("--database", required=True, help="Database name")
@@ -78,4 +85,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    main(args)
+    do(args)
+
+
+if __name__ == "__main__":
+    main()

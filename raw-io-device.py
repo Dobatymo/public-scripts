@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "ctypes-windows-sdk>=0.0.16",
+#     "genutility[args,file,iter]",
+# ]
+# ///
 import errno
 import logging
 import os

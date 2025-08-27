@@ -1,3 +1,13 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[filesystem,fingerprinting,hash,metrics,rich]",
+#     "metrictrees",
+#     "metrohash",
+#     "pillow",
+#     "rich",
+# ]
+# ///
 import logging
 import re
 from collections import defaultdict

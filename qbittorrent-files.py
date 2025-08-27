@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[torrent]",
+# ]
+# ///
 import logging
 import os.path
 from os import fspath

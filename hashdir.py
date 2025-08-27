@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[callbacks,file,filesystem,hash,iter,rich]",
+#     "rich",
+#     "typing-extensions",
+# ]
+# ///
 import hashlib
 import logging
 import os.path

@@ -1,21 +1,34 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[datetime,twitch]",
+# ]
+# ///
 import logging
+import sys
 import time
 import winsound
-from urllib.error import URLError
+from argparse import ArgumentParser
+from urllib.error import HTTPError, URLError
 
 from genutility.datetime import now
 from genutility.twitch import TwitchAPI
 
-if __name__ == "__main__":
-    from argparse import ArgumentParser
 
+def main():
     parser = ArgumentParser()
     parser.add_argument("username")
     parser.add_argument("clientid")
     parser.add_argument("--interval", type=int, default=120)
     args = parser.parse_args()
 
-    watcher = TwitchAPI(args.clientid, username=args.username).watcher()
+    try:
+        watcher = TwitchAPI(args.clientid, username=args.username).watcher()
+    except HTTPError as e:
+        if e.status == 401:
+            print("Unauthorized. Maybe the username or clientid is invalid.")
+            sys.exit(1)
+        raise
 
     def notify_started(user_id, name, title):
         print("{} started streaming '{}' at {}".format(name, title, now().isoformat(" ")))
@@ -33,3 +46,7 @@ if __name__ == "__main__":
             logging.warning("Wrong data")
 
         time.sleep(args.interval)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,3 +1,12 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "ctypes-windows-sdk>=0.0.16",
+#     "genutility",
+#     "rich",
+#     "typing-extensions",
+# ]
+# ///
 import logging
 from ctypes import POINTER, Structure, cast, pointer, sizeof
 from ctypes.wintypes import ULONG, USHORT
@@ -457,14 +466,6 @@ class SmartDevice:
                 logging.error("sqp_device failed: %s", e)
                 raise
 
-        if method is None:
-            method = {
-                STORAGE_BUS_TYPE.BusTypeAta: Methods.SMART,
-                STORAGE_BUS_TYPE.BusTypeSata: Methods.SMART,
-                STORAGE_BUS_TYPE.BusTypeUsb: Methods.SCSI_PASS_THROUGH_DIRECT_12,
-                STORAGE_BUS_TYPE.BusTypeNvme: Methods.NVME,
-            }[bus]
-
         if bus in {STORAGE_BUS_TYPE.BusTypeAta, STORAGE_BUS_TYPE.BusTypeSata}:
             try:
                 gvip = drive.get_smart_version()
@@ -475,8 +476,18 @@ class SmartDevice:
                 raise
         elif bus in (STORAGE_BUS_TYPE.BusTypeUsb, STORAGE_BUS_TYPE.BusTypeNvme):
             pass
+        elif bus == STORAGE_BUS_TYPE.BusTypeFileBackedVirtual:
+            raise RuntimeError("Smart not supported on virtual device")
         else:
             logging.warning("Unsupported bus: %s", bus.name)
+
+        if method is None:
+            method = {
+                STORAGE_BUS_TYPE.BusTypeAta: Methods.SMART,
+                STORAGE_BUS_TYPE.BusTypeSata: Methods.SMART,
+                STORAGE_BUS_TYPE.BusTypeUsb: Methods.SCSI_PASS_THROUGH_DIRECT_12,
+                STORAGE_BUS_TYPE.BusTypeNvme: Methods.NVME,
+            }[bus]
 
         return {
             Methods.SMART: SmartDeviceDefault,

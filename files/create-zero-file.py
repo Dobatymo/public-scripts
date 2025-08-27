@@ -1,12 +1,19 @@
 from argparse import ArgumentParser
+from pathlib import Path
 
-parser = ArgumentParser()
-parser.add_argument("size", type=int, help="File size in MB")
-parser.add_argument("path", type=str)
-args = parser.parse_args()
 
-bytes = b"\0" * 1024 * 1024
+def main() -> None:
+    parser = ArgumentParser()
+    parser.add_argument("size", type=int, help="File size in MB")
+    parser.add_argument("path", type=Path)
+    args = parser.parse_args()
 
-with open(args.path, "wb") as fw:
-    for _i in range(args.size):
-        fw.write(bytes)
+    data = b"\0" * 1024 * 1024
+
+    with args.path.open("xb") as fw:
+        for _i in range(args.size):
+            fw.write(data)
+
+
+if __name__ == "__main__":
+    main()

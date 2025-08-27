@@ -1,3 +1,11 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility",
+#     "pillow",
+#     "pyexiv2",
+# ]
+# ///
 import logging
 from argparse import ArgumentParser, Namespace
 from os import fspath

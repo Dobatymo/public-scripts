@@ -1,3 +1,9 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[args,file,json,torrent]",
+# ]
+# ///
 import json
 import sys
 from argparse import ArgumentParser
@@ -38,7 +44,7 @@ def main():
             parser.error("Cannot use --compact or --json with --infohash")
 
         with PathOrTextIO(args.out or sys.stdout, "wt") as fw:
-            infohash = torrent_info_hash(td["info"])
+            infohash = torrent_info_hash(td[b"info"])
             fw.write(infohash)
 
     else:
@@ -47,11 +53,11 @@ def main():
                 return json.dump(td, fw, ensure_ascii=False, indent="\t", sort_keys=False, cls=BuiltinEncoder)
 
             else:
-                del td["info"]["pieces"]
+                del td[b"info"][b"pieces"]
 
                 try:
-                    for file in td["info"]["files"]:
-                        file["path"] = "/".join(file["path"])
+                    for file in td[b"info"][b"files"]:
+                        file[b"path"] = b"/".join(file[b"path"])
                 except KeyError:
                     pass
 

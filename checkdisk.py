@@ -1,7 +1,13 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "rich",
+# ]
+# ///
 import logging
 import os
 import re
-import subprocess
+import subprocess  # nosec
 import sys
 from argparse import ArgumentParser, Namespace
 from locale import getpreferredencoding
@@ -75,7 +81,7 @@ def check_disks(drives: List[str]) -> None:
 
         try:
             with stderr.open("ab") as fw:
-                with subprocess.Popen(cmd, bufsize=0, stdout=subprocess.PIPE, stderr=fw) as proc:
+                with subprocess.Popen(cmd, bufsize=0, stdout=subprocess.PIPE, stderr=fw) as proc:  # nosec
                     assert proc.stdout is not None  # for mypy
                     lb = BinaryLineBuffer()
                     while True:

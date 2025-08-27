@@ -1,3 +1,10 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[datetime,filesystem,logging,rich]",
+#     "rich",
+# ]
+# ///
 import contextlib
 import logging
 import mmap
@@ -80,7 +87,7 @@ def read_path(path: Path, chunk_size: int, p: Progress, *, buffering: int = -1, 
         with context as fr:
             old_pos: Optional[int] = None
             total_read = 0
-            with p.task(total=filesize, description=f"Reading {path.name}") as task:
+            with p.task(total=filesize, description=f"Reading {path.name}", transient=True) as task:
                 while True:
                     cur_pos = fr.tell()
                     task.update(completed=cur_pos)
@@ -110,6 +117,8 @@ def read_path(path: Path, chunk_size: int, p: Progress, *, buffering: int = -1, 
                         if not out:
                             break
                     old_pos = cur_pos
+
+            p.print(f"Read {path.name}")
 
     if total_read != filesize:
         logger.warning("Only read a total of %d out of %s expected bytes", total_read, filesize)

@@ -1,15 +1,22 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[sql]",
+#     "pypyodbc",
+# ]
+# ///
+from argparse import ArgumentParser
+
 import pypyodbc
 from genutility.sql import export_sql_to_csv
 
 
-def main(args):
-    with pypyodbc.connect(args.connectstr) as conn:
-        export_sql_to_csv(conn, args.csvfile, args.query, verbose=not args.quiet)
+def do(connectstr: str, csvfile: str, query: str, quiet: bool) -> None:
+    with pypyodbc.connect(connectstr) as conn:
+        export_sql_to_csv(conn, csvfile, query, verbose=not quiet)
 
 
-if __name__ == "__main__":
-    from argparse import ArgumentParser
-
+def main() -> None:
     parser = ArgumentParser(description="Import csv files to sqlite")
     parser.add_argument(
         "connectstr",
@@ -20,4 +27,8 @@ if __name__ == "__main__":
     parser.add_argument("-q", "--quiet", action="store_true", help="Don't show progress")
     args = parser.parse_args()
 
-    main(args)
+    do(args.connectstr, args.csvfile, args.query, args.quiet)
+
+
+if __name__ == "__main__":
+    main()

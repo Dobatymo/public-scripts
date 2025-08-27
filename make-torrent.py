@@ -1,4 +1,13 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "genutility[args,rich]",
+#     "libtorrent",
+#     "rich",
+# ]
+# ///
 import logging
+from argparse import ArgumentParser
 from functools import partial
 from math import ceil, log2
 from os import fspath
@@ -6,6 +15,9 @@ from pathlib import Path
 from typing import Callable, Iterable, Optional
 
 import libtorrent
+from genutility.args import existing_path, future_file
+from genutility.rich import Progress
+from rich.progress import Progress as RichProgress
 
 logger = logging.getLogger(__name__)
 
@@ -73,13 +85,7 @@ def create_torrent(
     return libtorrent.bencode(d)
 
 
-if __name__ == "__main__":
-    from argparse import ArgumentParser
-
-    from genutility.args import existing_path, future_file
-    from genutility.rich import Progress
-    from rich.progress import Progress as RichProgress
-
+def main():
     parser = ArgumentParser(description="Create torrent file")
     parser.add_argument("inpath", type=existing_path, help="Path to files")
     parser.add_argument("outpath", type=future_file, help="Path to put torrent file")
@@ -139,3 +145,7 @@ if __name__ == "__main__":
 
     with open(args.outpath, "wb") as fw:
         fw.write(data)
+
+
+if __name__ == "__main__":
+    main()
