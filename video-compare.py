@@ -35,7 +35,6 @@ from genutility.json import json_lines
 from genutility.numpy import fill_gaps, remove_spikes
 from genutility.tqdm import Progress, TqdmMultiprocessing, TqdmProcess
 from genutility.videofile import CvVideo
-from more_itertools import zip_equal
 from skimage.metrics import mean_squared_error, peak_signal_noise_ratio, structural_similarity
 
 logger = logging.getLogger(__name__)
@@ -178,6 +177,17 @@ assert list(skip_every_nth(range(10), 2)) == [0, 2, 4, 6, 8]
 assert list(skip_every_nth(range(10), 3)) == [0, 1, 3, 4, 6, 7, 9]
 
 
+def log_ignored(ignored1: int, ignored2: int) -> None:
+    if ignored1 == 0 and ignored2 == 0:
+        pass  # all good
+    elif (ignored1 > 0 and ignored2 == 0) or (ignored1 == 0 and ignored2 > 0):
+        logger.warning(
+            "Ignored %d frames at the end of video 1 and ignored %d frames at the end of video 2", ignored1, ignored2
+        )
+    else:
+        raise RuntimeError(f"ignored1 = {ignored1}, ignored2 = {ignored2}")
+
+
 def process(
     path1: Path,
     path2: Path,
@@ -221,14 +231,7 @@ def process(
             times1.append(time1)
             times2.append(time2)
 
-    if ignored1 == 0 and ignored2 == 0:
-        pass  # all good
-    elif (ignored1 > 0 and ignored2 == 0) or (ignored1 == 0 and ignored2 > 0):
-        logger.warning(
-            "Ignored %d frames at the end of video 1 and ignored %d frames at the end of video 2", ignored1, ignored2
-        )
-    else:
-        raise RuntimeError(f"ignored1 = {ignored1}, ignored2 = {ignored2}")
+    log_ignored(ignored1, ignored2)
 
     return scores, times1, times2
 
@@ -336,6 +339,18 @@ def action_compare(args: Namespace) -> int:
     else:
         raise ValueError("Cannot compare files and directories")
 
+    if len(args.path_pairs) % 2 != 0:
+        raise ValueError("Path pairs list length must be even")
+
+    for i in range(0, len(args.path_pairs), 2):
+        p1 = args.path_pairs[i]
+        p2 = args.path_pairs[i + 1]
+
+        if not p1.is_file() or not p2.is_file():
+            raise ValueError("Path pairs must be files")
+
+        pairs.append((p1, p2))
+
     process_paths(
         pairs,
         args.metric,
@@ -373,7 +388,7 @@ def export_differences_video(
         a = skip_every_nth(islice(a.iterall(native=True), skip1, None), skip_nth_1)
         b = skip_every_nth(islice(b.iterall(native=True), skip2, None), skip_nth_2)
         it = compress(
-            zip_equal(a, b),
+            zip_longest(a, b),
             progress.track(frame_mask, description="Reading frames"),
         )
         total = np.count_nonzero(frame_mask)
@@ -392,9 +407,19 @@ def export_differences_video(
         stream.pix_fmt = "yuv420p"
         stream.options = {"crf": "23", "preset": "fast"}
 
-        for (_time1, image1), (_time2, image2) in progress.track(
-            it, total=total, description="Encoding", mininterval=0.5
-        ):
+        ignored1 = 0
+        ignored2 = 0
+
+        for time_image_1, time_image_2 in progress.track(it, total=total, description="Encoding", mininterval=0.5):
+            if time_image_1 is None:
+                ignored2 += 1
+                continue
+            if time_image_2 is None:
+                ignored1 += 1
+                continue
+
+            (_time1, image1), (_time2, image2) = time_image_1, time_image_2
+
             img_diff = process_img_diff(image1, image2, diff, size1, size2)
 
             frame = av.VideoFrame.from_ndarray(img_diff, format="bgr24")
@@ -408,6 +433,8 @@ def export_differences_video(
             container.mux(packet)
 
         container.close()
+
+    log_ignored(ignored1, ignored2)
 
 
 def action_analyze(args: Namespace) -> int:
@@ -495,7 +522,23 @@ def simplify(image: np.ndarray, size=(128, 128)) -> np.ndarray:
     if image.shape[0] <= size[0] and image.shape[1] <= size[1]:
         return image
 
-    return cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+    image = cv2.resize(image, size, interpolation=cv2.INTER_AREA)
+
+    return image
+
+
+from skimage.transform import resize
+
+
+def make_descriptor(image: np.ndarray, size=(128, 128)) -> np.ndarray:
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    image = resize(image, size, anti_aliasing=True, preserve_range=True)
+    v = image.astype(np.float32).ravel()
+    v -= v.mean()
+    std = v.std() + 1e-8
+    v /= std
+    return v
 
 
 def diagonal_means(arr: np.ndarray) -> np.ndarray:
@@ -507,40 +550,136 @@ def diagonal_means(arr: np.ndarray) -> np.ndarray:
     return offsets, np.array(means)
 
 
-def find_lag(path1: Path, path2: Path, metric: str, size: int, progress: Progress) -> Tuple[np.ndarray, np.ndarray]:
-    # mse can be optimized using fast fourier transform?
+from numpy.fft import irfft, rfft
 
-    assert metric == "ssim", metric
 
+def _dot_correlation(A: np.ndarray, B: np.ndarray) -> np.ndarray:
+    l1, d = A.shape
+    l2, d2 = B.shape
+    if d != d2:
+        raise ValueError(f"dim mismatch: A.shape={A.shape}, B.shape={B.shape}")
+
+    n = l1 + l2 - 1
+    nfft = 1 << (n - 1).bit_length()  # next power of two
+
+    # cross term via FFT: sum_k correlate(A[:,k], B[:,k]) for all lags
+    corr = np.zeros(n, dtype=np.float64)
+    for k in range(d):
+        Ak = A[:, k]
+        Bk = B[:, k]
+        Ak_pad = np.pad(Ak, (0, nfft - l1))
+        Bk_rev_pad = np.pad(Bk[::-1], (0, nfft - l2))  # reverse for correlation via convolution
+        conv = irfft(rfft(Ak_pad) * rfft(Bk_rev_pad), nfft)[:n]
+        corr += conv
+
+    lags = np.arange(-(l2 - 1), l1)  # shape (n,)
+    return corr, lags
+
+
+def dot_prod_correlation(A: np.ndarray, B: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    A: (l1, d), B: (l2, d) descriptor sequences.
+    Returns lags array and correlation scores for all lags in [-(l2-1) .. (l1-1)].
+    """
+    corr, lags = _dot_correlation(A, B)
+
+    return lags, corr
+
+
+def mse_correlation(A: np.ndarray, B: np.ndarray, *, per_element: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    """
+    Compute MSE between two vector sequences A (l1,d) and B (l2,d) for all integer lags c,
+    where we compare A[i] with B[i+c] over the overlapping index range.
+
+    Returns:
+      lags: np.ndarray of shape (l1 + l2 - 1,), values from -(l2-1) .. (l1-1)
+      mse:  np.ndarray of same shape, MSE at each lag (inf where no overlap)
+      best_c: int, lag with minimal MSE
+
+    Notes:
+      - If per_element=True, MSE divides by (overlap_len * d).
+        If False, you get mean per frame (SSD / overlap_len).
+      - Works for any real-valued A,B. Uses real FFT for speed.
+      - Complexity: O(d * n log n) with n = l1 + l2 - 1.
+    """
+    corr, lags = _dot_correlation(A, B)
+    l1 = A.shape[0]
+    l2 = B.shape[0]
+    d = A.shape[1]
+
+    # squared-norm sums over overlaps via prefix sums
+    a2 = np.einsum("ij,ij->i", A, A)  # (l1,)
+    b2 = np.einsum("ij,ij->i", B, B)  # (l2,)
+    pa = np.concatenate(([0.0], np.cumsum(a2)))  # (l1+1,)
+    pb = np.concatenate(([0.0], np.cumsum(b2)))  # (l2+1,)
+
+    # vectorized overlap bounds for each lag
+    i0 = np.maximum(0, -lags)
+    i1 = np.minimum(l1, l2 - lags)
+    overlap = (i1 - i0).astype(np.int64)  # number of frame pairs at each lag
+
+    # sums of ||A||^2 over [i0, i1)
+    sum_a2 = pa[i1] - pa[i0]
+    # sums of ||B||^2 over [j0, j1) with j = i + c
+    j0 = i0 + lags
+    j1 = i1 + lags
+    sum_b2 = pb[j1] - pb[j0]
+
+    # cross term (dot-product correlation) aligned with lag indices
+    cross = corr[lags + (l2 - 1)]
+
+    # Sum of Squared Differences: SSD(c) = sum_a2 + sum_b2 - 2 * cross
+    ssd = sum_a2 + sum_b2 - 2.0 * cross
+
+    # turn into MSE
+    denom = overlap.astype(float)
+    if per_element:
+        denom *= d  # mean per scalar element
+    with np.errstate(divide="ignore", invalid="ignore"):
+        mse = ssd / denom
+    mse[overlap <= 0] = np.inf  # no overlap → undefined; mark as inf
+
+    return lags, mse
+
+
+def find_lag(
+    path1: Path, path2: Path, metric: str, size: int, skip_nth_1: int, skip_nth_2: int, progress: Progress
+) -> Tuple[np.ndarray, np.ndarray]:
     metric_func = metric_funcs[metric]
     agg_func = agg_funcs[metric]
 
     images_a = []
     with CvVideo(path1) as vid:
-        for _time, image in islice(vid.iterall(native=True), size):
+        for _time, image in islice(skip_every_nth(vid.iterall(native=True), skip_nth_1), size):
             img_processed = simplify(image)
             images_a.append(img_processed)
 
     images_b = []
     with CvVideo(path2) as vid:
-        for _time, image in islice(vid.iterall(native=True), size):
+        for _time, image in islice(skip_every_nth(vid.iterall(native=True), skip_nth_2), size):
             img_processed = simplify(image)
             images_b.append(img_processed)
-
-    out = np.full((size, size), np.nan, dtype=np.float32)
-    # out2 = np.full((size, size), np.nan, dtype=np.float32)
 
     images_a = np.array(images_a)
     images_b = np.array(images_b)
 
-    for i in progress.track(range(0, size), transient=True):
-        for j in range(0, size):
-            out[i, j] = metric_func(images_a[i], images_b[j])
-        # out2[i] = metric_func(images_a[None, i, ...], images_b)
-        # np.testing.assert_all_close(out[i], out2[i])
+    if metric == "mse":
+        F = images_a.reshape((images_a.shape[0], -1))  # (l1, d)
+        G = images_b.reshape((images_b.shape[0], -1))  # (l2, d)
 
-    offsets, means = diagonal_means(out)
-    idx = np.argsort(means)
+        offsets, scores = mse_correlation(F, G)
+        idx = np.argsort(scores)
+    else:
+        out = np.full((size, size), np.nan, dtype=np.float32)
+
+        for i in progress.track(range(0, size), transient=False):
+            for j in range(0, size):
+                out[i, j] = metric_func(images_a[i], images_b[j])
+            # batch mode is actually slower
+            # out[i] = batch_structural_similarity(np.broadcast_to(images_a[None, i, ...], images_b.shape), images_b)
+
+        offsets, scores = diagonal_means(out)
+        idx = np.argsort(scores)
 
     if agg_func == np.min:
         idx = idx[::-1]
@@ -549,12 +688,14 @@ def find_lag(path1: Path, path2: Path, metric: str, size: int, progress: Progres
     else:
         assert False, f"Unsupported function {agg_func}"
 
-    return offsets[idx], means[idx]
+    return offsets[idx], scores[idx]
 
 
 def action_find_lag(args: Namespace) -> int:
     progress = Progress()
-    offsets, means = find_lag(args.path1, args.path2, args.metric, args.size, progress)
+    offsets, means = find_lag(
+        args.path1, args.path2, args.metric, args.size, args.skip_nth_1, args.skip_nth_2, progress
+    )
     print(offsets[:100], means[:100])
     return 0
 
@@ -571,8 +712,15 @@ def main() -> None:
 
     parser_a = subparsers.add_parser("compare", help="Calculate video quality metric")
     parser_a.set_defaults(func=action_compare)
-    parser_a.add_argument("path1", type=Path, help="First input directory")
-    parser_a.add_argument("path2", type=Path, help="Second input directory")
+    parser_a.add_argument("path1", type=Path, help="First input directory or file")
+    parser_a.add_argument("path2", type=Path, help="Second input directory or file")
+    parser_a.add_argument(
+        "--path-pairs",
+        type=Path,
+        nargs="+",
+        default=[],
+        help="Additional individual files to compare. The first file will be compared to the second, the third to the forth, and so on.",
+    )
     parser_a.add_argument("--size1", nargs=2, metavar=("W", "H"), type=int, help="Resize first video to width x height")
     parser_a.add_argument("--size2", nargs=2, metavar=("W", "H"), type=int, help="Resize first video to width x height")
     parser_a.add_argument("--skip-nth-1", metavar="N", default=0, type=int, help="Skip every n-th frame")
@@ -642,6 +790,8 @@ def main() -> None:
         choices=metric_funcs.keys(),
         help="Image quality metric",
     )
+    parser_c.add_argument("--skip-nth-1", metavar="N", default=0, type=int, help="Skip every n-th frame")
+    parser_c.add_argument("--skip-nth-2", metavar="N", default=0, type=int, help="Skip every n-th frame")
 
     args = parser.parse_args()
 
