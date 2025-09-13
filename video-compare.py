@@ -40,6 +40,7 @@ from skimage.metrics import mean_squared_error, peak_signal_noise_ratio, structu
 logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
+MAX_FRAME_TIME_DIFFERENCE_LOGS = 3
 
 
 def sum_abs_diff(image1: np.ndarray, image2: np.ndarray) -> int:
@@ -200,6 +201,7 @@ def process(
     skip_nth_2: int = 0,
     skip1: int = 0,
     skip2: int = 0,
+    ignore_frame_time_difference: bool = False,
 ) -> Tuple[List[float], List[float], List[float]]:
     scores: List[float] = []
     times1: List[float] = []
@@ -212,7 +214,7 @@ def process(
         a = skip_every_nth(islice(a.iterall(native=True), skip1, None), skip_nth_1)
         b = skip_every_nth(islice(b.iterall(native=True), skip2, None), skip_nth_2)
         it = zip_longest(a, b)
-
+        count_ignore_frame_time_difference = 0
         for time_image_1, time_image_2 in progress.track(
             islice(it, limit), desc=limit_desc(path1.name), total=limit, mininterval=0.5
         ):
@@ -225,7 +227,16 @@ def process(
 
             (time1, image1), (time2, image2) = time_image_1, time_image_2
             if skip1 == 0 and skip2 == 0:
-                assert abs(time1 - time2) < 0.000001, f"Frame time difference too large: {time1} vs {time2}"
+                if abs(time1 - time2) >= 0.000001:
+                    if ignore_frame_time_difference:
+                        if count_ignore_frame_time_difference < MAX_FRAME_TIME_DIFFERENCE_LOGS:
+                            logger.warning("Frame time difference too large: %s vs %s", time1, time2)
+                        elif count_ignore_frame_time_difference == MAX_FRAME_TIME_DIFFERENCE_LOGS:
+                            logger.warning("Ignoring further frame time differences")
+                        count_ignore_frame_time_difference += 1
+                    else:
+                        raise RuntimeError(f"Frame time difference too large: {time1} vs {time2}")
+
             score = process_img(image1, image2, metric, size1, size2)
             scores.append(score)
             times1.append(time1)
@@ -248,6 +259,7 @@ def process_paths(
     skip_nth_2: int = 0,
     skip1: int = 0,
     skip2: int = 0,
+    ignore_frame_time_difference: bool = False,
 ) -> None:
     with json_lines.from_path(out, "wt") as fw:
         if not pairs:
@@ -273,6 +285,7 @@ def process_paths(
                         skip_nth_2,
                         skip1,
                         skip2,
+                        ignore_frame_time_difference,
                     )
                     futures[future] = {
                         "metric": metric,
@@ -363,6 +376,7 @@ def action_compare(args: Namespace) -> int:
         args.skip_nth_2,
         args.skip1,
         args.skip2,
+        args.ignore_frame_time_difference,
     )
     return 0
 
@@ -727,6 +741,9 @@ def main() -> None:
     parser_a.add_argument("--skip-nth-2", metavar="N", default=0, type=int, help="Skip every n-th frame")
     parser_a.add_argument("--skip1", metavar="N", default=0, type=int, help="Skip first N frames")
     parser_a.add_argument("--skip2", metavar="N", default=0, type=int, help="Skip first N frames")
+    parser_a.add_argument(
+        "--ignore-frame-time-difference", action="store_true", help="Suppress frame time difference error message"
+    )
     parser_a.add_argument(
         "-i",
         "--ignore-ext",
