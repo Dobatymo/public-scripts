@@ -1,9 +1,10 @@
 # /// script
-# requires-python = ">=3.8"
+# requires-python = ">=3.9"
 # dependencies = [
 #     "genutility[args,rich]",
 #     "libtorrent",
 #     "rich",
+#     "libtorrent-windows-dll",
 # ]
 # ///
 import logging
@@ -121,8 +122,10 @@ def main():
 
     if args.v1:
         flags = libtorrent.create_torrent.v1_only
-    if args.v2:
+    elif args.v2:
         flags = libtorrent.create_torrent.v2_only
+    else:
+        flags = 0
 
     with RichProgress(disable=args.silent) as progress:
         p = Progress(progress)

@@ -99,6 +99,7 @@ def isbns_to_13(isbnss: Iterable[Sequence[str]], path: Any) -> Dict[str, Optiona
     return out
 
 
+# \d{3}-\d{1}-\d{8}-\d{1} is not a valid pattern
 patterns = [
     r"\d{3}-\d{1}-\d{7}-\d{1}-\d",
     r"\d{3}-\d{1}-\d{5}-\d{3}-\d",

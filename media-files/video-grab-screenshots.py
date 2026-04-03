@@ -32,6 +32,8 @@ def iterfiles(inpath: Path, recursive: bool, suffixes: Container[str]) -> Iterat
 
 
 def main():
+    DEFAULT_FORMAT = ".png"
+
     parser = ArgumentParser()
     parser.add_argument("inpath", type=existing_path)
     parser.add_argument("outpath", nargs="?", type=Path)
@@ -41,7 +43,7 @@ def main():
         "--format",
         type=suffix,
         choices=(".jpg", ".png", ".tiff"),
-        default=".png",
+        default=DEFAULT_FORMAT,
         help="Picture format of the output file, if outpath is a directory.",
     )
     parser.add_argument("-w", "--overwrite", action="store_true", help="Overwrite existing files")
