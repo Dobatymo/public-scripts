@@ -1,11 +1,11 @@
 import logging
 import sys
-from contextlib import nullcontext
+from contextlib import AbstractContextManager, nullcontext
 
 from genutility.http import URLRequest
 
 
-def check_context(context):
+def check_context(context: AbstractContextManager) -> None:
     with context as fr:
         for line in fr:
             link = line.rstrip()
@@ -28,6 +28,6 @@ if __name__ == "__main__":
     if args.file == "-":
         context = nullcontext(sys.stdin)
     else:
-        context = open(args.file, encoding="utf-8")
+        context = open(args.file, encoding="utf-8")  # noqa: SIM115
 
     check_context(context)

@@ -67,9 +67,20 @@ line-length = 120
 line-length = 120
 lint.extend-select = [
   "B",
+  "C4",
+  "DTZ",
   "I",
+  "PIE",
+  "SIM",
+  "UP",
 ]
-lint.ignore = [ "B011" ]
+lint.ignore = [
+  "B011",
+  "SIM102",
+  "SIM108",
+  "SIM114",
+  "SIM117",
+]
 
 [tool.isort]
 profile = "black"

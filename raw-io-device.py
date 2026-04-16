@@ -165,6 +165,7 @@ def blockfileiterignore(
     else:
         buffering = -1
 
+    # why not use a context manager?
     fr = open(volume, "rb", buffering=buffering)
 
     try:

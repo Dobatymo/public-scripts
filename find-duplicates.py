@@ -40,7 +40,7 @@ def metrohash(path: str) -> bytes:
 def nometahash(path: str) -> bytes:
     lowerpath = path.lower()
 
-    if lowerpath.endswith(".jpg") or lowerpath.endswith(".jpeg"):
+    if lowerpath.endswith((".jpg", ".jpeg")):
         hashobj = sha1()  # nosec: B303
         try:
             hash_raw_jpeg(path, hashobj)

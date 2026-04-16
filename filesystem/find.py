@@ -16,7 +16,14 @@ from typing import Collection, Iterator, Optional
 from genutility._files import to_dos_path
 from genutility.args import ascii, base64, is_dir, suffix_lower
 from genutility.file import is_all_byte, read_file
-from genutility.filesystem import PathType, scandir_counts, scandir_error_log_warning, scandir_ext, scandir_rec
+from genutility.filesystem import (
+    PathType,
+    filter_recall,
+    scandir_counts,
+    scandir_error_log_warning,
+    scandir_ext,
+    scandir_rec,
+)
 from genutility.os import islink, realpath
 from genutility.rich import MarkdownHighlighter, Progress, StdoutFileNoStyle, get_double_format_columns
 from genutility.win.file import GetCompressedFileSize
@@ -31,19 +38,19 @@ def is_sparse_or_compressed(entry: os.DirEntry) -> bool:
     return GetCompressedFileSize(entry.path) < entry.stat().st_size
 
 
-def _files(path: PathType, include: Collection[str], exclude: Collection[str], progress: Progress):
+def _files(path: PathType, include: Collection[str], exclude: Collection[str], recall: bool, progress: Progress):
     include = set(include) if include is not None else None
     exclude = set(exclude) if exclude is not None else None
 
     yield from p.track(
-        scandir_ext(path, include, exclude, errorfunc=scandir_error_log_warning),
+        filter(filter_recall(recall), scandir_ext(path, include, exclude, errorfunc=scandir_error_log_warning)),
         description="Processed {task.completed} files",
     )
 
 
 def bad_encoding(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
             try:
                 with open(entry, encoding=args.encoding) as fr:
                     fr.read()
@@ -63,7 +70,7 @@ def line_search_regex(args: Namespace, progress: Progress) -> int:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "line"])
 
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
             with open(entry.path, encoding=args.encoding, errors=args.errors) as fr:
                 for line in fr:
                     m = args.pattern.search(line)
@@ -83,7 +90,7 @@ def all_zero(args: Namespace, progress: Progress) -> int:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "filesize", "mtime"])
 
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
             stat = entry.stat()
             if stat.st_size != 0:
                 with open(entry.path, "rb") as fr:
@@ -101,7 +108,7 @@ def has_filesize(args: Namespace, progress: Progress) -> int:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "filesize", "mtime"])
 
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
             stat = entry.stat()
             if stat.st_size == args.size:
                 num += 1
@@ -113,7 +120,7 @@ def has_filesize(args: Namespace, progress: Progress) -> int:
 
 def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
             if entry.is_file():
                 try:
                     if is_sparse_or_compressed(entry):
@@ -279,7 +286,7 @@ def exact_content_match(args: Namespace, progress: Progress) -> int:
     content = args.base64_content or args.ascii_content.encode("ascii")
 
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
             path = entry.path
             if entry.stat().st_size == len(content):
                 data = read_file(path, "rb")
@@ -304,7 +311,7 @@ def transformed_dups(args: Namespace, progress: Progress) -> int:
     out = defaultdict(list)
 
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, progress):
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
             key = {"path": entry.path, "name": entry.name, "size": entry.stat().st_size}[args.key]
 
             if args.sub_pattern:
@@ -469,6 +476,11 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
         metavar=".EXT",
         action="append",
         help="File extensions not to process",
+    )
+    parser.add_argument(
+        "--recall",
+        action="store_true",
+        help="Download files which are currently only available online (on OneDrive for example), otherwise they are skipped.",
     )
 
     parser.add_argument("--out", type=Path, help="Write output to file, otherwise to stdout")

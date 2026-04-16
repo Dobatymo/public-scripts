@@ -1,6 +1,5 @@
 if __name__ == "__main__":
     from argparse import ArgumentParser
-    from io import open
 
     from genutility.filesystem import append_to_filename
 

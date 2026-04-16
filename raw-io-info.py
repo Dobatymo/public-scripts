@@ -8,6 +8,7 @@
 # ///
 import logging
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from contextlib import suppress
 from ctypes import byref, create_unicode_buffer
 from ctypes.wintypes import DWORD
 from enum import Enum, Flag, IntEnum, IntFlag
@@ -644,14 +645,11 @@ def get_json():
                 except FileNotFoundError:
                     pass
                 else:
-                    try:
+                    with suppress(OSError):
                         mount_points = list(find_volume_mount_points(vol_guid_path + "\\"))
-                    except OSError:
-                        pass
-                    try:
+
+                    with suppress(OSError):
                         volume_path_names = get_volume_path_names(vol_guid_path + "\\")
-                    except OSError:
-                        pass
 
                 p["Paths"] = vol_paths
                 p["DOS Paths"] = list(set(vol_dos_paths))

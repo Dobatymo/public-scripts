@@ -44,7 +44,7 @@ def make_seconds(BackendCls):
 
         def _frame_range(self, time_base: Fraction, duration: int) -> range:
             steps = floor(duration * time_base / self.seconds)
-            return range(0, steps + 1)
+            return range(steps + 1)
 
         def calculate_offsets(self, time_base: Fraction, duration: int) -> Iterator[int]:
             for i in self._frame_range(time_base, duration):

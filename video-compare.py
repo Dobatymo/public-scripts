@@ -35,6 +35,7 @@ from genutility.json import json_lines
 from genutility.numpy import fill_gaps, remove_spikes
 from genutility.tqdm import Progress, TqdmMultiprocessing, TqdmProcess
 from genutility.videofile import CvVideo
+from numpy.fft import irfft, rfft
 from skimage.metrics import mean_squared_error, peak_signal_noise_ratio, structural_similarity
 
 logger = logging.getLogger(__name__)
@@ -541,10 +542,9 @@ def simplify(image: np.ndarray, size=(128, 128)) -> np.ndarray:
     return image
 
 
-from skimage.transform import resize
-
-
 def make_descriptor(image: np.ndarray, size=(128, 128)) -> np.ndarray:
+    from skimage.transform import resize
+
     image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
     image = resize(image, size, anti_aliasing=True, preserve_range=True)
@@ -562,9 +562,6 @@ def diagonal_means(arr: np.ndarray) -> np.ndarray:
     for k in offsets:
         means.append(np.nanmean(np.diag(arr, k=k)))
     return offsets, np.array(means)
-
-
-from numpy.fft import irfft, rfft
 
 
 def _dot_correlation(A: np.ndarray, B: np.ndarray) -> np.ndarray:
@@ -686,8 +683,8 @@ def find_lag(
     else:
         out = np.full((size, size), np.nan, dtype=np.float32)
 
-        for i in progress.track(range(0, size), transient=False):
-            for j in range(0, size):
+        for i in progress.track(range(size), transient=False):
+            for j in range(size):
                 out[i, j] = metric_func(images_a[i], images_b[j])
             # batch mode is actually slower
             # out[i] = batch_structural_similarity(np.broadcast_to(images_a[None, i, ...], images_b.shape), images_b)
