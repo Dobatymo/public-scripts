@@ -415,11 +415,11 @@ def ata_identify_json(devid: IDENTIFY_DEVICE_DATA) -> dict:
 
 class Methods(Enum):
     SMART = "smart"  # winioctl.SMART_RCV_DRIVE_DATA
-    ATA_PASS_THROUGH = "ata-pass-through"
-    SCSI_PASS_THROUGH_12 = "scsi-pass-through-12"
-    SCSI_PASS_THROUGH_DIRECT_12 = "scsi-pass-through-direct-12"
-    SCSI_PASS_THROUGH_16 = "scsi-pass-through-16"
-    SCSI_PASS_THROUGH_DIRECT_16 = "scsi-pass-through-direct-16"
+    ATA_PASS_THROUGH = "ata-pass-through"  # noqa: S105
+    SCSI_PASS_THROUGH_12 = "scsi-pass-through-12"  # noqa: S105
+    SCSI_PASS_THROUGH_DIRECT_12 = "scsi-pass-through-direct-12"  # noqa: S105
+    SCSI_PASS_THROUGH_16 = "scsi-pass-through-16"  # noqa: S105
+    SCSI_PASS_THROUGH_DIRECT_16 = "scsi-pass-through-direct-16"  # noqa: S105
     SCSI_MINIPORT = "scsi-miniport"
     NVME = "nvme"
 

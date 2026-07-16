@@ -233,7 +233,7 @@ def find_and_run(args: Namespace, progress: Progress) -> int:
             path = to_dos_path(path)
 
         try:
-            subprocess.check_output(args.command, shell=args.shell, cwd=path, stderr=subprocess.STDOUT)
+            subprocess.check_output(args.command, shell=args.shell, cwd=path, stderr=subprocess.STDOUT)  # noqa: S603
         except subprocess.CalledProcessError as e:
             logger.error("Calling `%s` in `%s` failed: %s", e.cmd, path, force_decode(e.output, path))
 

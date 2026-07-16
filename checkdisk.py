@@ -7,7 +7,7 @@
 import logging
 import os
 import re
-import subprocess  # nosec
+import subprocess
 import sys
 from argparse import ArgumentParser, Namespace
 from locale import getpreferredencoding
@@ -81,7 +81,7 @@ def check_disks(drives: List[str]) -> None:
 
         try:
             with stderr.open("ab") as fw:
-                with subprocess.Popen(cmd, bufsize=0, stdout=subprocess.PIPE, stderr=fw) as proc:  # nosec
+                with subprocess.Popen(cmd, bufsize=0, stdout=subprocess.PIPE, stderr=fw) as proc:  # noqa: S603
                     assert proc.stdout is not None  # for mypy
                     lb = BinaryLineBuffer()
                     while True:

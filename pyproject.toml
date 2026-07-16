@@ -1,11 +1,11 @@
-[build-system]
-build-backend = "poetry.core.masonry.api"
-requires = [
-  "poetry-core",
-]
-
 [project]
+name = "public-scripts"
+version = "0.1.0"
+description = "A collection of scripts"
 readme = "readme.md"
+authors = [
+  { name = "Dobatymo", email = "Dobatymo@users.noreply.github.com" },
+]
 requires-python = ">=3.8"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
@@ -14,54 +14,30 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
-
-[tool.poetry]
-name = "public-scripts"
-version = "0.1.0"
-description = "A collection of scripts"
-authors = [
-  "Dobatymo <Dobatymo@users.noreply.github.com>",
+dependencies = [
+  "bencode-py>=2",
+  "ctypes-windows-sdk>=0.0.15",
+  "genutility[fileformats,filesystem,fingerprinting,hash,image,metrics,pillow,rich,torrent,tqdm,videofile]>=0.0.114",
+  "libtorrent>=2.0.5",
+  "metrictrees>=0.0.1",
+  "metrohash-python>=1",
+  "more-itertools>=10",
+  "mutagen>=1",
+  "pillow>=9.1",
+  "pyexiv2>=2",
+  "pymongo>=4",
+  "pypyodbc>=1",
+  "pywin32>=306",
+  "requests>=2",
+  "rich>=12.3",
+  "scikit-image>=0.16",
+  "send2trash>=1",
+  "tqdm>=4",
+  "typing-extensions>=4.6"
 ]
-packages = [
-]
-
-[tool.poetry.dependencies]
-python = ">=3.8"
-bencode-py = ">=2.0.0"
-ctypes-windows-sdk = ">=0.0.15"
-genutility = { version = ">=0.0.114", extras = [
-  "fileformats",
-  "filesystem",
-  "fingerprinting",
-  "hash",
-  "image",
-  "metrics",
-  "pillow",
-  "rich",
-  "torrent",
-  "tqdm",
-  "videofile",
-] }
-libtorrent = ">=2.0.5"
-metrictrees = ">=0.0.1"
-metrohash-python = ">=1"
-more-itertools = ">=10"
-mutagen = ">=1"
-pillow = ">=9.1.0"
-pyexiv2 = ">=2"
-pymongo = ">=4"
-pypyodbc = ">=1"
-pywin32 = ">=306"
-requests = ">=2"
-rich = ">=12.3.0"
-scikit-image = ">=0.16"
-send2trash = ">=1"
-tqdm = ">=4"
-typing-extensions = ">=4.6.0"
-
-[tool.black]
-line-length = 120
 
 [tool.ruff]
 line-length = 120
@@ -71,31 +47,17 @@ lint.extend-select = [
   "DTZ",
   "I",
   "PIE",
+  "S",
   "SIM",
   "UP",
 ]
-lint.ignore = [
-  "B011",
-  "SIM102",
-  "SIM108",
-  "SIM114",
-  "SIM117",
-]
-
-[tool.isort]
-profile = "black"
-line_length = 120
+lint.ignore = [ "B011", "S101", "SIM102", "SIM108", "SIM114", "SIM117" ]
 
 [tool.mypy]
-allow_redefinition = true
 ignore_missing_imports = true
-no_implicit_optional = true
-show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true
 warn_unreachable = true
-
-[tool.bandit]
-skips = [
-  "B101",
-]
+allow_redefinition = true
+no_implicit_optional = true
+show_error_codes = true

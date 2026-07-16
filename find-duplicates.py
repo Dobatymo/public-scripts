@@ -41,7 +41,7 @@ def nometahash(path: str) -> bytes:
     lowerpath = path.lower()
 
     if lowerpath.endswith((".jpg", ".jpeg")):
-        hashobj = sha1()  # nosec: B303
+        hashobj = sha1()  # noqa: S324
         try:
             hash_raw_jpeg(path, hashobj)
         except ParseError as e:
@@ -54,7 +54,7 @@ def nometahash(path: str) -> bytes:
         return hashobj.digest()
 
     elif lowerpath.endswith(".png"):
-        hashobj = sha1()  # nosec: B303
+        hashobj = sha1()  # noqa: S324
         try:
             hash_raw_png(path, hashobj)
         except ParseError as e:
