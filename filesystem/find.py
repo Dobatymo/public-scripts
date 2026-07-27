@@ -183,7 +183,7 @@ def symlinks(args: Namespace, progress: Progress) -> int:
                         if not os.path.exists(realpath(entry.path)):
                             fw.write(f"{entry.path}\n")
                     else:
-                        assert False  # noqa: B011
+                        assert False
 
             except Exception:
                 logger.exception("Error in `%s`", entry.path)

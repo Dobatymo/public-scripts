@@ -526,7 +526,7 @@ def query_disk_raw(path: str) -> None:
 
 
 def get_json():
-    device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_DISK)
+    _device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_DISK)
 
     out = []
 

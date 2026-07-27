@@ -47,6 +47,7 @@ lint.extend-select = [
   "DTZ",
   "I",
   "PIE",
+  "RUF",
   "S",
   "SIM",
   "UP",

@@ -62,7 +62,7 @@ class HeidocBackend(BackendBase):
         soup = BeautifulSoup(r.content, "html.parser", from_encoding=r.encoding)
         tables = soup.find_all("table")
         assert len(tables) == 1
-        td1, td2 = tables[0].tbody.tr.find_all("td")
+        _td1, td2 = tables[0].tbody.tr.find_all("td")
         filename = td2.get_text()
         return filename
 
@@ -113,7 +113,7 @@ class AdguardBackend(BackendBase):
 
 class MicrosoftHashes:
     hashes: Dict[str, Optional[str]]
-    backendsmap = {"heidoc": HeidocBackend, "adguard": AdguardBackend}
+    backendsmap = {"heidoc": HeidocBackend, "adguard": AdguardBackend}  # noqa: RUF012  # this should be a frozendict in the future
 
     def __init__(self, cachefile: Optional[str] = None, backend: Optional[str] = None) -> None:
         self.cachefile = cachefile or DEFAULT_CACHEFILE

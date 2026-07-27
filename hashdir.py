@@ -127,7 +127,7 @@ class SFV(Formatter):
 
 
 class DirHasher:
-    formatter = {
+    formatter = {  # noqa: RUF012  # this should be a frozendict in the future
         "hashsum": Hashsum,
         "hashdeep": Hashdeep,
         "sfv": SFV,
@@ -312,7 +312,7 @@ def main(args: Namespace) -> int:
 
 
 if __name__ == "__main__":
-    ALGORITHMS = sorted(hashlib.algorithms_available) + ["crc32"]
+    ALGORITHMS = [*sorted(hashlib.algorithms_available), "crc32"]
     HASHDEEP_ALGOS = sorted({"md5", "sha1", "sha256", "whirlpool", "tiger"} & set(ALGORITHMS))
     DEFAULT_ALGO = "sha1"
 

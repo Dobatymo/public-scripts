@@ -15,7 +15,7 @@ from genutility.win.device import Drive, enum_device_paths, enum_disks
 
 
 def enum_volumes() -> Iterator[dict]:
-    device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_VOLUME)
+    _device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_VOLUME)
     for device_path in device_paths:
         out = {"DevicePath": device_path}
         with Drive.from_raw_path(device_path, "") as drive:
@@ -25,7 +25,7 @@ def enum_volumes() -> Iterator[dict]:
 
 
 def enum_partition() -> Iterator[dict]:
-    device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_PARTITION)
+    _device_infos, device_paths = enum_device_paths(interface_class=winioctl.GUID_DEVINTERFACE_PARTITION)
     for device_path in device_paths:
         out = {"DevicePath": device_path}
         with Drive.from_raw_path(device_path, "") as drive:
