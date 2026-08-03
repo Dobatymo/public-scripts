@@ -11,7 +11,6 @@
 # - Duplication tags below root folders are ignored, including nested M-tag overrides.
 # - Traversal errors are logged and ignored, but the scan is still marked complete.
 # - Completed databases are reused without checking the pool, filters, or freshness.
-# - --include is accepted but does not filter the scan.
 # - --size-only leaves matching files marked UNCHECKED.
 # - KeyboardInterrupt is logged but exits with a successful status.
 # - PoolPart directories from different pools on separate drives are combined.
@@ -23,8 +22,9 @@ import os.path
 import shutil
 import sqlite3
 import sys
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, ArgumentTypeError, Namespace
 from collections import Counter, defaultdict
+from collections.abc import Collection
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional
@@ -76,21 +76,31 @@ class DuplicationTag:
 
 def get_files(pool: list[Path], include: list[str], exclude: list[str], p: Progress) -> FilesT:
     files = defaultdict(list)
+    selected = {os.path.normcase(path) for path in include or exclude}
 
     for driveindex, drive in enumerate(p.track(pool, description="Processing pools...")):
         for entry in p.track(
             scandir_rec(
-                drive, dirs=False, files=True, relative=True, follow_symlinks=False, errorfunc=scandir_error_log_warning
+                drive,
+                dirs=True,
+                files=True,
+                relative=True,
+                follow_symlinks=False,
+                allow_skip=True,
+                errorfunc=scandir_error_log_warning,
             ),
             description=f"Collecting files ({drive.drive})...",
         ):
-            meta = entry.stat()
+            root = os.path.normcase(entry.relpath.partition(os.sep)[0])
+            skip = root not in selected if include else root in selected
+            if entry.is_dir():
+                entry.follow = not skip
+                continue
+            if skip:
+                continue
 
-            for ign in exclude:
-                if entry.relpath.startswith(ign + os.sep):
-                    break
-            else:
-                files[entry.relpath].append((driveindex, meta.st_size, meta.st_mtime_ns))
+            meta = entry.stat()
+            files[entry.relpath].append((driveindex, meta.st_size, meta.st_mtime_ns))
 
     return files
 
@@ -124,12 +134,25 @@ def find_good_copy(infos: PartsT, sizes: list[int]) -> Optional[int]:
     return None
 
 
-def check_files(conn: sqlite3.Connection, duplicated: list[str], size_only: bool, p: Progress) -> None:
+def check_files(
+    conn: sqlite3.Connection,
+    duplicated: list[str],
+    size_only: bool,
+    p: Progress,
+    include_check_drives: Collection[str] = (),
+    exclude_check_drives: Collection[str] = (),
+) -> None:
     cur_select = conn.cursor()
     cur_update = conn.cursor()
 
     sql_select = f"SELECT idx, path FROM {TABLE_NAME_DRIVES} ORDER BY idx"  # noqa: S608
-    pool = [Path(path) for (idx, path) in cur_select.execute(sql_select)]
+    pool = [Path(path) for (_idx, path) in cur_select.execute(sql_select)]
+    check_driveindexes = {
+        idx
+        for idx, path in enumerate(pool)
+        if (not include_check_drives or path.anchor.upper() in include_check_drives)
+        and path.anchor.upper() not in exclude_check_drives
+    }
 
     sql_count = f"SELECT count(*) FROM {TABLE_NAME_FILES} WHERE json_array_length(pool_parts) = 1"  # noqa: S608
     sql_select = f"SELECT path, pool_parts, status, error_message FROM {TABLE_NAME_FILES} WHERE json_array_length(pool_parts) = 1"  # noqa: S608
@@ -155,7 +178,9 @@ def check_files(conn: sqlite3.Connection, duplicated: list[str], size_only: bool
     for path, _pool_parts, _status, _error_message in p.track(
         cur_select.execute(sql_select, ("UNCHECKED",)), total=total, description="Comparing files..."
     ):
-        pool_parts = json.loads(_pool_parts)
+        pool_parts = [part for part in json.loads(_pool_parts) if part[0] in check_driveindexes]
+        if len(pool_parts) < 2:
+            continue
 
         logger.debug("`%s` found on %i drives", path, len(pool_parts))
 
@@ -192,8 +217,21 @@ def check_files(conn: sqlite3.Connection, duplicated: list[str], size_only: bool
     conn.commit()
 
 
-def iter_pools() -> Iterator[Path]:
+def parse_drive(value: str) -> str:
+    value = value.strip().rstrip("\\/")
+    if value.endswith(":"):
+        value = value[:-1]
+    if len(value) != 1 or not value.isascii() or not value.isalpha():
+        raise ArgumentTypeError(f"Invalid drive letter: {value}")
+    return f"{value.upper()}:\\"
+
+
+def iter_pools(include_drives: Collection[str] = (), exclude_drives: Collection[str] = ()) -> Iterator[Path]:
     for drive in os.listdrives():
+        drive = drive.upper()
+        if (include_drives and drive not in include_drives) or drive in exclude_drives:
+            continue
+
         paths = list(Path(drive).glob("PoolPart.*"))
         if len(paths) == 0:
             pass
@@ -320,10 +358,7 @@ def get_duplicated(pool: list[Path]) -> list[str]:
 
 
 def check_duplication(parser: ArgumentParser, args: Namespace) -> int:
-    if args.include and args.exclude:
-        parser.error("Cannot use --include and --exclude and the same time")
-
-    pool = list(iter_pools())
+    pool = list(iter_pools(args.include_drives, args.exclude_drives))
 
     if not pool:
         print("No pools found")
@@ -357,7 +392,14 @@ def check_duplication(parser: ArgumentParser, args: Namespace) -> int:
             if scan_insert_complete != (1,):
                 raise RuntimeError(f"Database scan/insert is incomplete: {args.db}")
 
-            check_files(conn, get_duplicated(pool), args.size_only, p)
+            check_files(
+                conn,
+                get_duplicated(pool),
+                args.size_only,
+                p,
+                args.include_check_drives,
+                args.exclude_check_drives,
+            )
         finally:
             conn.close()
 
@@ -401,8 +443,38 @@ if __name__ == "__main__":
         "check-duplication", formatter_class=ArgumentDefaultsHelpFormatter, help="Check consistency of pool duplication"
     )
     subparser_a.set_defaults(func=check_duplication)
-    subparser_a.add_argument("--include", nargs="+", metavar="DIR", default=[], help="Include only these root folders")
-    subparser_a.add_argument("--exclude", nargs="+", metavar="DIR", default=[], help="Ignore root folders")
+    drive_group = subparser_a.add_mutually_exclusive_group()
+    drive_group.add_argument(
+        "--include-drives",
+        nargs="+",
+        metavar="DRIVE",
+        type=parse_drive,
+        default=[],
+        help="Use only these drive letters",
+    )
+    drive_group.add_argument(
+        "--exclude-drives", nargs="+", metavar="DRIVE", type=parse_drive, default=[], help="Ignore these drive letters"
+    )
+    check_drive_group = subparser_a.add_mutually_exclusive_group()
+    check_drive_group.add_argument(
+        "--include-check-drives",
+        nargs="+",
+        metavar="DRIVE",
+        type=parse_drive,
+        default=[],
+        help="Compare copies only on these drive letters",
+    )
+    check_drive_group.add_argument(
+        "--exclude-check-drives",
+        nargs="+",
+        metavar="DRIVE",
+        type=parse_drive,
+        default=[],
+        help="Do not compare copies on these drive letters",
+    )
+    filter_group = subparser_a.add_mutually_exclusive_group()
+    filter_group.add_argument("--include", nargs="+", metavar="DIR", default=[], help="Include only these root folders")
+    filter_group.add_argument("--exclude", nargs="+", metavar="DIR", default=[], help="Ignore root folders")
     subparser_a.add_argument("--size-only", action="store_true", help="Only compare file sizes not actual file content")
     subparser_a.add_argument(
         "--db", type=Path, default="drivepool.sqlite", help="Path of Sqlite database which stores progress"

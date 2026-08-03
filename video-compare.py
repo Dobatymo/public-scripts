@@ -9,10 +9,9 @@
 #     "genutility[json,tqdm,videofile]>=0.0.119",
 #     "opencv-python",
 # ]
-#
-# [tool.uv.sources]
-# genutility = { path = "../public-libs/genutility" }
 # ///
+# TODO: Evaluate cv2.quality.QualitySSIM_compute from opencv-contrib as an SSIM backend.
+
 import json
 import logging
 import os
@@ -36,7 +35,7 @@ from genutility.numpy import fill_gaps, remove_spikes
 from genutility.tqdm import Progress, TqdmMultiprocessing, TqdmProcess
 from genutility.videofile import CvVideo
 from numpy.fft import irfft, rfft
-from skimage.metrics import mean_squared_error, peak_signal_noise_ratio, structural_similarity
+from skimage.metrics import structural_similarity
 
 logger = logging.getLogger(__name__)
 
@@ -45,15 +44,37 @@ MAX_FRAME_TIME_DIFFERENCE_LOGS = 3
 
 
 def sum_abs_diff(image1: np.ndarray, image2: np.ndarray) -> int:
-    return np.sum(np.abs(image1 - image2)).item()
+    return int(cv2.norm(image1, image2, cv2.NORM_L1))
+
+
+def cv2_mean_squared_error(image1: np.ndarray, image2: np.ndarray) -> float:
+    return cv2.norm(image1, image2, cv2.NORM_L2SQR) / image1.size
 
 
 metric_funcs = {
-    "mse": mean_squared_error,
+    "mse": cv2_mean_squared_error,
     "ssim": partial(structural_similarity, gradient=False, full=False),
-    "psnr": peak_signal_noise_ratio,
+    "psnr": cv2.PSNR,  # Identical images return a high finite value instead of infinity.
     "sad": sum_abs_diff,
 }
+
+processing_backends = {
+    "skimage": {
+        "ssim": metric_funcs["ssim"],
+    },
+    "cv2": {
+        "mse": cv2_mean_squared_error,
+        "psnr": cv2.PSNR,
+        "sad": sum_abs_diff,
+    },
+}
+
+
+def resolve_processing_backend(metric: str, processing_backend: Optional[str]) -> str:
+    processing_backend = processing_backend or ("skimage" if metric == "ssim" else "cv2")
+    if processing_backend not in processing_backends or metric not in processing_backends[processing_backend]:
+        raise ValueError(f"{processing_backend} backend does not support {metric}")
+    return processing_backend
 
 
 def ssim_diff(im1: np.ndarray, im2: np.ndarray) -> np.ndarray:
@@ -98,8 +119,10 @@ def process_img(
     metric: str,
     size1: Optional[Tuple[int, int]] = None,
     size2: Optional[Tuple[int, int]] = None,
+    processing_backend: Optional[str] = None,
 ) -> float:
-    func = metric_funcs[metric]
+    processing_backend = resolve_processing_backend(metric, processing_backend)
+    func = processing_backends[processing_backend][metric]
     cs = colorspace[metric]
 
     if cs == "gray":
@@ -203,7 +226,9 @@ def process(
     skip1: int = 0,
     skip2: int = 0,
     ignore_frame_time_difference: bool = False,
+    processing_backend: Optional[str] = None,
 ) -> Tuple[List[float], List[float], List[float]]:
+    processing_backend = resolve_processing_backend(metric, processing_backend)
     scores: List[float] = []
     times1: List[float] = []
     times2: List[float] = []
@@ -238,7 +263,7 @@ def process(
                     else:
                         raise RuntimeError(f"Frame time difference too large: {time1} vs {time2}")
 
-            score = process_img(image1, image2, metric, size1, size2)
+            score = process_img(image1, image2, metric, size1, size2, processing_backend)
             scores.append(score)
             times1.append(time1)
             times2.append(time2)
@@ -261,7 +286,9 @@ def process_paths(
     skip1: int = 0,
     skip2: int = 0,
     ignore_frame_time_difference: bool = False,
+    processing_backend: Optional[str] = None,
 ) -> None:
+    processing_backend = resolve_processing_backend(metric, processing_backend)
     with json_lines.from_path(out, "wt") as fw:
         if not pairs:
             return
@@ -287,9 +314,11 @@ def process_paths(
                         skip1,
                         skip2,
                         ignore_frame_time_difference,
+                        processing_backend,
                     )
                     futures[future] = {
                         "metric": metric,
+                        "processing_backend": processing_backend,
                         "path1": os.fspath(path1),
                         "path2": os.fspath(path2),
                         "limit": limit,
@@ -378,6 +407,7 @@ def action_compare(args: Namespace) -> int:
         args.skip1,
         args.skip2,
         args.ignore_frame_time_difference,
+        args.processing_backend,
     )
     return 0
 
@@ -759,7 +789,12 @@ def main() -> None:
         "--metric",
         default=DEFAULT_METRIC,
         choices=metric_funcs.keys(),
-        help="Image quality metric",
+        help="Image quality metric. PSNR returns a high finite value for identical images instead of infinity.",
+    )
+    parser_a.add_argument(
+        "--processing-backend",
+        choices=processing_backends,
+        help="Metric processing backend (defaults to skimage for SSIM and cv2 otherwise)",
     )
     parser_a.add_argument("--out", type=Path, required=True, help="JSON Lines output filename")
 
