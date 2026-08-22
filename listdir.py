@@ -2,6 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "genutility[filesystem,rich]>=0.0.121",
+#     "polars",
 #     "rich",
 # ]
 # ///
@@ -9,10 +10,13 @@ import csv
 import os
 import stat
 import sys
-from argparse import ArgumentParser
+import warnings
+from argparse import ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
+from contextlib import suppress
 from itertools import chain
 from pathlib import Path
-from typing import Optional
+from tempfile import NamedTemporaryFile
+from typing import List, Optional
 
 from genutility.filesystem import MyDirEntryT, scandir_rec
 from genutility.rich import Progress, StdoutFileNoStyle
@@ -61,21 +65,98 @@ def write_row(csvwriter, entry: MyDirEntryT, error: Optional[Exception]) -> None
         raise RuntimeError("this shouldn't happen") from e
 
 
-def main() -> None:
-    parser = ArgumentParser()
-    group_in = parser.add_mutually_exclusive_group(required=True)
-    group_in.add_argument("--in-paths", nargs="+", type=Path)
-    group_in.add_argument("--all-mounts", action="store_true")
-    parser.add_argument("--out-path", type=Path)
-    parser.add_argument("--overwrite", action="store_true")
-    args = parser.parse_args()
+def non_negative_int(value: str) -> int:
+    try:
+        result = int(value)
+    except ValueError as e:
+        raise ArgumentTypeError("must be an integer") from e
+    if result < 0:
+        raise ArgumentTypeError("must be non-negative")
+    return result
 
-    if args.in_paths:
-        for path in args.in_paths:
-            if not path.is_dir():
-                parser.error(f"{os.fspath(path)} is not a valid directory")
 
-    if args.all_mounts and sys.platform != "win32":
+def query_csv(
+    in_path: Path,
+    out_path: Optional[Path],
+    sort_column: str,
+    descending: bool,
+    offset: Optional[int],
+    limit: Optional[int],
+    errors_only: bool,
+    in_place: bool,
+    overwrite: bool,
+) -> bool:
+    import polars as pl
+
+    dataframe = pl.read_csv(in_path)
+    input_rows = dataframe.height
+    if errors_only:
+        if "error" not in dataframe.columns:
+            raise ValueError("CSV column not found: 'error'")
+        dataframe = dataframe.filter(pl.col("error").fill_null("") != "")
+
+    if sort_column == "path-length":
+        if "path" not in dataframe.columns:
+            raise ValueError("CSV column not found: 'path'")
+        sort_by = pl.col("path").str.len_chars()
+    elif sort_column not in dataframe.columns:
+        raise ValueError(f"CSV column not found: {sort_column!r}")
+    else:
+        sort_by = sort_column
+
+    dataframe = dataframe.sort(sort_by, descending=descending)
+    if offset:
+        dataframe = dataframe.slice(offset)
+    if limit is not None:
+        dataframe = dataframe.head(limit)
+
+    removed_rows = input_rows - dataframe.height
+    if in_place and removed_rows:
+        try:
+            response = input(
+                f"Query removes {removed_rows} of {input_rows} rows. Overwrite {os.fspath(in_path)!r}? [y/N] "
+            )
+        except EOFError:
+            response = ""
+        if response.casefold() not in ("y", "yes"):
+            return False
+
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", message="Polars found a filename")
+        if in_place:
+            temp_path = None
+            try:
+                with NamedTemporaryFile(
+                    "wb", dir=in_path.parent, prefix=".listdir-", suffix=".tmp", delete=False
+                ) as csvfile:
+                    temp_path = Path(csvfile.name)
+                    dataframe.write_csv(csvfile)
+                os.replace(temp_path, in_path)
+            except BaseException:
+                if temp_path is not None:
+                    with suppress(FileNotFoundError):
+                        temp_path.unlink()
+                raise
+        elif out_path is None:
+            dataframe.write_csv(sys.stdout.buffer)
+        else:
+            with out_path.open("wb" if overwrite else "xb") as csvfile:
+                dataframe.write_csv(csvfile)
+    return True
+
+
+def scan_paths(
+    in_paths: List[Path],
+    all_mounts: bool,
+    out_path: Optional[Path],
+    overwrite: bool,
+    parser: ArgumentParser,
+) -> None:
+    for path in in_paths:
+        if not path.is_dir():
+            parser.error(f"{os.fspath(path)} is not a valid directory")
+
+    if all_mounts and sys.platform != "win32":
         parser.error("--all-mounts currently only supported on Windows.")
 
     if sys.stdout.isatty():
@@ -85,9 +166,9 @@ def main() -> None:
         content_console = Console()
         progress_console = Console(stderr=True)
 
-    if args.in_paths:
-        paths = args.in_paths
-    elif args.all_mounts:
+    if in_paths:
+        paths = in_paths
+    elif all_mounts:
         if sys.version_info >= (3, 12):
             paths = sorted(chain.from_iterable(os.listmounts(vol) for vol in os.listvolumes()))
         else:
@@ -97,8 +178,8 @@ def main() -> None:
     else:
         assert False
 
-    mode = "wt" if args.overwrite else "xt"
-    with StdoutFileNoStyle(content_console, args.out_path, mode, encoding="utf-8", newline="") as csvfile:
+    mode = "wt" if overwrite else "xt"
+    with StdoutFileNoStyle(content_console, out_path, mode, encoding="utf-8", newline="") as csvfile:
         fw = csv.writer(csvfile)
         fw.writerow(("type", "path", "size", "mtime", "error"))
 
@@ -118,6 +199,80 @@ def main() -> None:
                     scandir_rec(path, files=True, dirs=True, others=True, follow_symlinks=False, errorfunc=write_error)
                 ):
                     write_row(fw, entry, None)
+
+
+def main(argv=None) -> None:
+    parser = ArgumentParser(description="Scan directories to CSV and query inventory CSV files.")
+    subparsers = parser.add_subparsers(dest="mode", required=True)
+
+    scan_parser = subparsers.add_parser(
+        "scan",
+        help="scan directories and write inventory CSV",
+        description="Scan directories without following symlinks or junctions and write inventory CSV.",
+        epilog="""Examples:
+  py listdir.py scan C:\\ D:\\ --out-path inventory.csv
+  py listdir.py scan --all-mounts --out-path mounts.csv --overwrite""",
+        formatter_class=RawDescriptionHelpFormatter,
+    )
+    scan_parser.add_argument("in_paths", nargs="*", metavar="PATH", type=Path, help="directories to scan")
+    scan_parser.add_argument("--all-mounts", action="store_true", help="scan all Windows mount points")
+    scan_parser.add_argument("--out-path", type=Path, help="output CSV path (default: stdout)")
+    scan_parser.add_argument("--overwrite", action="store_true", help="overwrite --out-path if it exists")
+
+    query_parser = subparsers.add_parser(
+        "query",
+        help="filter, sort, and page an inventory CSV",
+        description="Load an inventory CSV with Polars, filter and sort it, then write CSV.",
+        epilog="""Examples:
+  py listdir.py query inventory.csv --sort-column path-length --sort-order desc --in-place
+  py listdir.py query inventory.csv --sort-column path --errors-only --in-place""",
+        formatter_class=RawDescriptionHelpFormatter,
+    )
+    query_parser.add_argument("in_csv", metavar="CSV", type=Path, help="inventory CSV file to query")
+    query_parser.add_argument("--sort-column", required=True, help="CSV column used to sort, or path-length")
+    query_parser.add_argument("--sort-order", choices=("asc", "desc"), default="asc", help="sort order (default: asc)")
+    query_parser.add_argument("--offset", type=non_negative_int, help="rows to skip after filtering and sorting")
+    query_parser.add_argument("--limit", type=non_negative_int, help="maximum rows to write after --offset")
+    query_parser.add_argument(
+        "--errors-only", action="store_true", help="only write rows with a non-empty error column"
+    )
+    output_group = query_parser.add_mutually_exclusive_group()
+    output_group.add_argument("--out-path", type=Path, help="output CSV path (default: stdout)")
+    output_group.add_argument("--in-place", action="store_true", help="atomically replace the input CSV")
+    query_parser.add_argument("--overwrite", action="store_true", help="overwrite --out-path if it exists")
+
+    args = parser.parse_args(argv)
+    if args.mode == "scan":
+        if bool(args.in_paths) == args.all_mounts:
+            scan_parser.error("provide directory paths or --all-mounts, but not both")
+        scan_paths(args.in_paths, args.all_mounts, args.out_path, args.overwrite, scan_parser)
+    elif args.mode == "query":
+        if not args.in_csv.is_file():
+            query_parser.error(f"{os.fspath(args.in_csv)} is not a valid file")
+        if args.in_place and args.overwrite:
+            query_parser.error("--overwrite cannot be used with --in-place")
+        if args.in_place and args.in_csv.is_symlink():
+            query_parser.error("--in-place does not replace symlink inputs")
+        if args.out_path is not None and args.out_path.exists() and os.path.samefile(args.in_csv, args.out_path):
+            query_parser.error("use --in-place to overwrite the input CSV")
+        try:
+            completed = query_csv(
+                args.in_csv,
+                args.out_path,
+                args.sort_column,
+                args.sort_order == "desc",
+                args.offset,
+                args.limit,
+                args.errors_only,
+                args.in_place,
+                args.overwrite,
+            )
+        except ValueError as e:
+            query_parser.error(str(e))
+        if not completed:
+            query_parser.exit(1, "Cancelled; input CSV was not changed.\n")
+    else:
+        assert False
 
 
 if __name__ == "__main__":

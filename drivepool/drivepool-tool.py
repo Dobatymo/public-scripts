@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
+#     "ctypes-windows-sdk>=0.0.18",
 #     "genutility[file,filesystem,iter,rich,time]>=0.0.121",
 #     "rich",
 # ]
@@ -11,12 +12,13 @@
 # - Duplication tags below root folders are ignored, including nested M-tag overrides.
 # - Traversal errors are logged and ignored, but the scan is still marked complete.
 # - Completed databases are reused without checking the pool, filters, or freshness.
-# - --size-only leaves matching files marked UNCHECKED.
+# - --size-only and --skip-content leave matching files marked UNCHECKED.
 # - KeyboardInterrupt is logged but exits with a successful status.
 # - PoolPart directories from different pools on separate drives are combined.
 
 import json
 import logging
+import math
 import os
 import os.path
 import shutil
@@ -25,12 +27,23 @@ import sys
 from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, ArgumentTypeError, Namespace
 from collections import Counter, defaultdict
 from collections.abc import Collection
+from ctypes import byref, string_at
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterator, Optional
 
+from cwinsdk.um.accctrl import SE_OBJECT_TYPE
+from cwinsdk.um.aclapi import GetNamedSecurityInfoW
+from cwinsdk.um.securitybaseapi import GetLengthSid
+from cwinsdk.um.winbase import LocalFree
+from cwinsdk.um.winnt import (
+    GROUP_SECURITY_INFORMATION,
+    OWNER_SECURITY_INFORMATION,
+    PSECURITY_DESCRIPTOR,
+    PSID,
+)
 from genutility.file import equal_files
-from genutility.filesystem import scandir_error_log_warning, scandir_rec
+from genutility.filesystem import long_path_support, scandir_error_log_warning, scandir_rec
 from genutility.iter import all_equal, batch
 from genutility.rich import Progress
 from genutility.time import DeltaTime
@@ -44,6 +57,7 @@ FilesT = dict[str, PartsT]
 
 logger = logging.getLogger(__name__)
 COMMIT_PERIOD_SECONDS = 60
+DEFAULT_MTIME_TOLERANCE_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -90,6 +104,7 @@ def get_files(pool: list[Path], include: list[str], exclude: list[str], p: Progr
                 errorfunc=scandir_error_log_warning,
             ),
             description=f"Collecting files ({drive.drive})...",
+            transient=True,
         ):
             root = os.path.normcase(entry.relpath.partition(os.sep)[0])
             skip = root not in selected if include else root in selected
@@ -134,6 +149,34 @@ def find_good_copy(infos: PartsT, sizes: list[int]) -> Optional[int]:
     return None
 
 
+def get_owner_group(path: Path) -> tuple[bytes, bytes]:
+    owner = PSID()
+    group = PSID()
+    descriptor = PSECURITY_DESCRIPTOR()
+    GetNamedSecurityInfoW(
+        long_path_support(path),
+        SE_OBJECT_TYPE.SE_FILE_OBJECT,
+        OWNER_SECURITY_INFORMATION | GROUP_SECURITY_INFORMATION,
+        byref(owner),
+        byref(group),
+        None,
+        None,
+        byref(descriptor),
+    )
+
+    try:
+        if not owner or not group:
+            raise OSError("security descriptor has no owner or primary-group SID")
+        owner_length = GetLengthSid(owner)
+        group_length = GetLengthSid(group)
+        if not owner_length or not group_length:
+            raise OSError("security descriptor has an invalid owner or primary-group SID")
+        return string_at(owner, owner_length), string_at(group, group_length)
+    finally:
+        if descriptor:
+            LocalFree(descriptor)
+
+
 def check_files(
     conn: sqlite3.Connection,
     duplicated: list[str],
@@ -141,6 +184,9 @@ def check_files(
     p: Progress,
     include_check_drives: Collection[str] = (),
     exclude_check_drives: Collection[str] = (),
+    skip_content: bool = False,
+    mtime_tolerance_seconds: float = DEFAULT_MTIME_TOLERANCE_SECONDS,
+    check_owner_group: bool = False,
 ) -> None:
     cur_select = conn.cursor()
     cur_update = conn.cursor()
@@ -184,7 +230,7 @@ def check_files(
 
         logger.debug("`%s` found on %i drives", path, len(pool_parts))
 
-        driveindexes, sizes, _modtimes = zip(*pool_parts)
+        driveindexes, sizes, modtimes = zip(*pool_parts)
 
         if not all_equal(sizes):
             logger.warning("Filesizes different for %s %s", path, driveindexes)
@@ -195,8 +241,32 @@ def check_files(
             continue
 
         if not size_only:
+            if max(modtimes) - min(modtimes) > mtime_tolerance_seconds * 1_000_000_000:
+                logger.warning("File modification dates different for %s %s", path, driveindexes)
+                cur_update.execute(sql_update, ("INCONSISTENT_MODIFICATION_TIME", None, path))
+                assert cur_update.rowcount == 1
+                continue
+
+            paths = tuple(pool[di] / path for di in driveindexes)
             try:
-                paths = tuple(pool[di] / path for di in driveindexes)
+                if check_owner_group:
+                    owners, groups = zip(*(get_owner_group(path) for path in paths))
+                    owner_mismatch = not all_equal(owners)
+                    group_mismatch = not all_equal(groups)
+                    if owner_mismatch or group_mismatch:
+                        mismatches = " and ".join(
+                            name
+                            for name, mismatch in (("owners", owner_mismatch), ("primary groups", group_mismatch))
+                            if mismatch
+                        )
+                        logger.warning("File %s different for %s %s", mismatches, path, driveindexes)
+                        cur_update.execute(sql_update, ("INCONSISTENT_OWNER_GROUP", None, path))
+                        assert cur_update.rowcount == 1
+                        continue
+
+                if skip_content:
+                    continue
+
                 if not equal_files(*paths):
                     logger.warning("File content different for %s %s", path, driveindexes)
                     cur_update.execute(sql_update, ("INCONSISTENT_CONTENT", None, path))
@@ -224,6 +294,13 @@ def parse_drive(value: str) -> str:
     if len(value) != 1 or not value.isascii() or not value.isalpha():
         raise ArgumentTypeError(f"Invalid drive letter: {value}")
     return f"{value.upper()}:\\"
+
+
+def parse_nonnegative_seconds(value: str) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0:
+        raise ArgumentTypeError("must be a finite, non-negative number")
+    return seconds
 
 
 def iter_pools(include_drives: Collection[str] = (), exclude_drives: Collection[str] = ()) -> Iterator[Path]:
@@ -270,7 +347,7 @@ def init_db(conn: sqlite3.Connection) -> None:
     CREATE TABLE IF NOT EXISTS {TABLE_NAME_FILES} (
         path TEXT PRIMARY KEY,
         pool_parts JSON,
-        status TEXT CHECK(status IN ('UNCHECKED', 'CONSISTENT', 'INCONSISTENT_SIZE', 'INCONSISTENT_CONTENT', 'ERROR', 'OUTOFDATE')),
+        status TEXT CHECK(status IN ('UNCHECKED', 'CONSISTENT', 'INCONSISTENT_SIZE', 'INCONSISTENT_MODIFICATION_TIME', 'INCONSISTENT_OWNER_GROUP', 'INCONSISTENT_CONTENT', 'ERROR', 'OUTOFDATE')),
         error_message TEXT
     )
     """
@@ -381,7 +458,6 @@ def check_duplication(parser: ArgumentParser, args: Namespace) -> int:
                 init_db(conn)
                 files = get_files(pool, args.include, args.exclude, p)
                 insert_files(conn, pool, files, p)
-
             try:
                 scan_insert_complete = conn.execute(
                     f"SELECT scan_insert_complete FROM {TABLE_NAME_META} WHERE id = 1"  # noqa: S608
@@ -399,6 +475,9 @@ def check_duplication(parser: ArgumentParser, args: Namespace) -> int:
                 p,
                 args.include_check_drives,
                 args.exclude_check_drives,
+                skip_content=args.skip_content,
+                mtime_tolerance_seconds=args.mtime_tolerance,
+                check_owner_group=args.check_owner_group,
             )
         finally:
             conn.close()
@@ -440,7 +519,9 @@ if __name__ == "__main__":
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     subparser_a = subparsers.add_parser(
-        "check-duplication", formatter_class=ArgumentDefaultsHelpFormatter, help="Check consistency of pool duplication"
+        "check-duplication",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+        help="Check sizes, modification dates, and contents of pool duplicates",
     )
     subparser_a.set_defaults(func=check_duplication)
     drive_group = subparser_a.add_mutually_exclusive_group()
@@ -475,7 +556,29 @@ if __name__ == "__main__":
     filter_group = subparser_a.add_mutually_exclusive_group()
     filter_group.add_argument("--include", nargs="+", metavar="DIR", default=[], help="Include only these root folders")
     filter_group.add_argument("--exclude", nargs="+", metavar="DIR", default=[], help="Ignore root folders")
-    subparser_a.add_argument("--size-only", action="store_true", help="Only compare file sizes not actual file content")
+    comparison_group = subparser_a.add_mutually_exclusive_group()
+    comparison_group.add_argument(
+        "--size-only",
+        action="store_true",
+        help="Only compare file sizes; skip modification-date, owner/group, and content checks",
+    )
+    comparison_group.add_argument(
+        "--skip-content",
+        action="store_true",
+        help="Skip file-content comparison",
+    )
+    subparser_a.add_argument(
+        "--check-owner-group",
+        action="store_true",
+        help="Also compare file owners and primary groups",
+    )
+    subparser_a.add_argument(
+        "--mtime-tolerance",
+        type=parse_nonnegative_seconds,
+        default=DEFAULT_MTIME_TOLERANCE_SECONDS,
+        metavar="SECONDS",
+        help="Ignore modification-time differences up to this many seconds",
+    )
     subparser_a.add_argument(
         "--db", type=Path, default="drivepool.sqlite", help="Path of Sqlite database which stores progress"
     )

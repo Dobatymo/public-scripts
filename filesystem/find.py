@@ -1,10 +1,28 @@
+# /// script
+# requires-python = ">=3.8"
+# dependencies = [
+#     "ctypes-windows-sdk>=0.0.18",
+#     "genutility[file,filesystem,rich]>=0.0.121",
+#     "rich",
+#     "send2trash",
+# ]
+# ///
+
 import csv
 import logging
 import os
 import os.path
 import re
+import stat
 import subprocess
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+import sys
+from argparse import (
+    ArgumentDefaultsHelpFormatter,
+    ArgumentParser,
+    ArgumentTypeError,
+    Namespace,
+    RawDescriptionHelpFormatter,
+)
 from collections import defaultdict
 from enum import Flag, auto
 from fnmatch import fnmatch
@@ -13,6 +31,13 @@ from operator import or_
 from pathlib import Path
 from typing import Collection, Iterator, Optional
 
+from cwinsdk.um.fileapi import SetFileAttributesW
+from cwinsdk.um.winnt import (
+    FILE_ATTRIBUTE_PINNED,
+    FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
+    FILE_ATTRIBUTE_RECALL_ON_OPEN,
+    FILE_ATTRIBUTE_UNPINNED,
+)
 from genutility._files import to_dos_path
 from genutility.args import ascii, base64, is_dir, suffix_lower
 from genutility.file import is_all_byte, read_file
@@ -24,7 +49,7 @@ from genutility.filesystem import (
     scandir_ext,
     scandir_rec,
 )
-from genutility.os import islink, realpath
+from genutility.os import islink
 from genutility.rich import MarkdownHighlighter, Progress, StdoutFileNoStyle, get_double_format_columns
 from genutility.win.file import GetCompressedFileSize
 from rich.logging import RichHandler
@@ -32,6 +57,36 @@ from rich.progress import Progress as RichProgress
 from send2trash import send2trash
 
 logger = logging.getLogger(__name__)
+
+FILE_ATTRIBUTE_FLAGS = {
+    "readonly": stat.FILE_ATTRIBUTE_READONLY,
+    "hidden": stat.FILE_ATTRIBUTE_HIDDEN,
+    "system": stat.FILE_ATTRIBUTE_SYSTEM,
+    "archive": stat.FILE_ATTRIBUTE_ARCHIVE,
+    "normal": stat.FILE_ATTRIBUTE_NORMAL,
+    "temporary": stat.FILE_ATTRIBUTE_TEMPORARY,
+    "sparse": stat.FILE_ATTRIBUTE_SPARSE_FILE,
+    "reparse-point": stat.FILE_ATTRIBUTE_REPARSE_POINT,
+    "compressed": stat.FILE_ATTRIBUTE_COMPRESSED,
+    "offline": stat.FILE_ATTRIBUTE_OFFLINE,
+    "not-content-indexed": stat.FILE_ATTRIBUTE_NOT_CONTENT_INDEXED,
+    "encrypted": stat.FILE_ATTRIBUTE_ENCRYPTED,
+    "integrity-stream": stat.FILE_ATTRIBUTE_INTEGRITY_STREAM,
+    "no-scrub-data": stat.FILE_ATTRIBUTE_NO_SCRUB_DATA,
+    # Cloud-file flags which are not available in Python 3.8's stat module.
+    "recall-on-open": FILE_ATTRIBUTE_RECALL_ON_OPEN,
+    "pinned": FILE_ATTRIBUTE_PINNED,
+    "unpinned": FILE_ATTRIBUTE_UNPINNED,
+    "recall-on-data-access": FILE_ATTRIBUTE_RECALL_ON_DATA_ACCESS,
+}
+SETTABLE_FILE_ATTRIBUTES = (
+    "readonly",
+    "hidden",
+    "system",
+    "archive",
+    "temporary",
+    "not-content-indexed",
+)
 
 
 def is_sparse_or_compressed(entry: os.DirEntry) -> bool:
@@ -130,6 +185,119 @@ def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
     return 0
 
 
+def alternate_data_stream_name(value: str) -> str:
+    if not value or any(char in value for char in ":/\\"):
+        raise ArgumentTypeError("must be a stream name without ':', '/', or '\\'")
+    return value
+
+
+def alternate_data_stream(args: Namespace, progress: Progress) -> int:
+    if sys.platform != "win32":
+        raise RuntimeError("alternate data streams are only supported on Windows")
+
+    found = 0
+    failed = 0
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+            stream_path = f"{entry.path}:{args.stream}"
+            try:
+                os.stat(stream_path)
+            except FileNotFoundError:
+                continue
+            except OSError as e:
+                failed += 1
+                logger.warning("Checking stream `%s` on `%s` failed: %s", args.stream, entry.path, e)
+                continue
+
+            found += 1
+            fw.write(f"{entry.path}\n")
+            if args.remove:
+                try:
+                    os.remove(stream_path)
+                    logger.info("Removed stream `%s` from `%s`", args.stream, entry.path)
+                except OSError as e:
+                    failed += 1
+                    logger.warning("Removing stream `%s` from `%s` failed: %s", args.stream, entry.path, e)
+
+    logger.info("Found %d files with alternate data stream `%s`", found, args.stream)
+    return 1 if failed else 0
+
+
+def _file_attribute_mask(names: Collection[str]) -> int:
+    return reduce(or_, (FILE_ATTRIBUTE_FLAGS[name] for name in names), 0)
+
+
+def file_attributes(args: Namespace, progress: Progress) -> int:
+    if sys.platform != "win32":
+        raise RuntimeError("file attributes are only supported on Windows")
+
+    has_attributes = set(args.has_attributes or ())
+    lacks_attributes = set(args.lacks_attributes or ())
+    set_attributes = set(args.set_attributes or ())
+    clear_attributes = set(args.clear_attributes or ())
+    change_requested = bool(set_attributes or clear_attributes)
+
+    if not has_attributes and not lacks_attributes:
+        raise ValueError("at least one --has or --lacks criterion is required")
+    if conflict := has_attributes & lacks_attributes:
+        raise ValueError(f"attributes cannot be required and absent at the same time: {', '.join(sorted(conflict))}")
+    if conflict := set_attributes & clear_attributes:
+        raise ValueError(f"attributes cannot be set and cleared at the same time: {', '.join(sorted(conflict))}")
+
+    has_mask = _file_attribute_mask(has_attributes)
+    lacks_mask = _file_attribute_mask(lacks_attributes)
+    set_mask = _file_attribute_mask(set_attributes)
+    clear_mask = _file_attribute_mask(clear_attributes)
+    changed_mask = set_mask | clear_mask
+    found = 0
+    changes = 0
+    failed = 0
+
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
+        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+            try:
+                current = entry.stat(follow_symlinks=False).st_file_attributes
+            except OSError as e:
+                failed += 1
+                logger.warning("Reading attributes of `%s` failed: %s", entry.path, e)
+                continue
+
+            if current & has_mask != has_mask or current & lacks_mask:
+                continue
+
+            found += 1
+            fw.write(f"{entry.path}\n")
+
+            if not change_requested:
+                continue
+
+            new = (current | set_mask) & ~clear_mask
+            if new & ~stat.FILE_ATTRIBUTE_NORMAL:
+                new &= ~stat.FILE_ATTRIBUTE_NORMAL
+            elif new == 0:
+                new = stat.FILE_ATTRIBUTE_NORMAL
+
+            if new == current:
+                continue
+
+            try:
+                SetFileAttributesW(entry.path, new)
+                actual = os.stat(entry.path, follow_symlinks=False).st_file_attributes
+                if actual & changed_mask != new & changed_mask:
+                    raise OSError("Windows did not retain the requested attribute changes")
+            except OSError as e:
+                failed += 1
+                logger.warning("Changing attributes of `%s` failed: %s", entry.path, e)
+            else:
+                changes += 1
+
+    if change_requested:
+        logger.info("Found %d matching files. Changed %d files", found, changes)
+    else:
+        logger.info("Found %d matching files", found)
+    return 1 if failed else 0
+
+
 class LinkModes(Flag):
     symlink = auto()
     junction = auto()
@@ -177,10 +345,10 @@ def symlinks(args: Namespace, progress: Progress) -> int:
                     if LinkModes.valid in mode and LinkModes.invalid in mode:
                         fw.write(f"{entry.path}\n")
                     elif LinkModes.valid in mode:
-                        if os.path.exists(realpath(entry.path)):
+                        if os.path.exists(os.path.realpath(entry.path)):
                             fw.write(f"{entry.path}\n")
                     elif LinkModes.invalid in mode:
-                        if not os.path.exists(realpath(entry.path)):
+                        if not os.path.exists(os.path.realpath(entry.path)):
                             fw.write(f"{entry.path}\n")
                     else:
                         assert False
@@ -333,8 +501,6 @@ def transformed_dups(args: Namespace, progress: Progress) -> int:
 
 
 if __name__ == "__main__":
-    import sys
-
     DEFAULT_ENCODING = "utf-8"
 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
@@ -459,6 +625,74 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
     )
     subparser_k.set_defaults(func=has_filesize)
     subparser_k.add_argument("--size", type=int, required=True, help="Key to apply transformation to")
+
+    subparser_l = subparsers.add_parser(
+        "alternate-data-stream",
+        aliases=("ads",),
+        formatter_class=RawDescriptionHelpFormatter,
+        help="Find files with a named NTFS alternate data stream",
+        description="Find files with a specific NTFS alternate data stream and optionally remove only that stream.",
+        epilog="""Examples:
+  find.py alternate-data-stream --stream Zone.Identifier C:\\Downloads
+  find.py ads --stream Zone.Identifier --remove C:\\Downloads""",
+    )
+    subparser_l.set_defaults(func=alternate_data_stream)
+    subparser_l.add_argument("--stream", type=alternate_data_stream_name, required=True, help="Stream name to find")
+    subparser_l.add_argument("--remove", action="store_true", help="Remove the named stream from matching files")
+
+    subparser_m = subparsers.add_parser(
+        "file-attributes",
+        aliases=("attrs",),
+        formatter_class=RawDescriptionHelpFormatter,
+        help="Find or change Windows file attributes",
+        description="""Find files by Windows attributes. All --has and --lacks criteria must match.
+Supplying --set or --clear changes matching files immediately.
+
+Matchable attributes:
+  readonly, hidden, system, archive, normal, temporary, sparse, reparse-point,
+  compressed, offline, not-content-indexed, encrypted, integrity-stream,
+  no-scrub-data, recall-on-open, pinned, unpinned, recall-on-data-access.
+
+Changeable attributes:
+  readonly, hidden, system, archive, temporary, not-content-indexed.""",
+        epilog="""Examples:
+  find.py attrs --has readonly C:\\Data
+  find.py attrs --has readonly --clear readonly C:\\Data
+  find.py attrs --lacks archive --set archive C:\\Data""",
+    )
+    subparser_m.set_defaults(func=file_attributes)
+    subparser_m.add_argument(
+        "--has",
+        dest="has_attributes",
+        action="append",
+        choices=tuple(FILE_ATTRIBUTE_FLAGS),
+        metavar="ATTRIBUTE",
+        help="Require an attribute; repeat to require all",
+    )
+    subparser_m.add_argument(
+        "--lacks",
+        dest="lacks_attributes",
+        action="append",
+        choices=tuple(FILE_ATTRIBUTE_FLAGS),
+        metavar="ATTRIBUTE",
+        help="Require an attribute to be absent; repeat to require all",
+    )
+    subparser_m.add_argument(
+        "--set",
+        dest="set_attributes",
+        action="append",
+        choices=SETTABLE_FILE_ATTRIBUTES,
+        metavar="ATTRIBUTE",
+        help="Set an attribute on matches; repeat for multiple attributes",
+    )
+    subparser_m.add_argument(
+        "--clear",
+        dest="clear_attributes",
+        action="append",
+        choices=SETTABLE_FILE_ATTRIBUTES,
+        metavar="ATTRIBUTE",
+        help="Clear an attribute on matches; repeat for multiple attributes",
+    )
 
     parser.add_argument("path", type=is_dir, help="Path to scan for files or directories")
     parser.add_argument(
