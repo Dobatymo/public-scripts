@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[filesystem,rich]>=0.0.121",
+#     "genutility[args,filesystem,rich]>=0.0.122",
 #     "polars",
 #     "rich",
 # ]
@@ -11,13 +11,14 @@ import os
 import stat
 import sys
 import warnings
-from argparse import ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
+from argparse import ArgumentParser, RawDescriptionHelpFormatter
 from contextlib import suppress
 from itertools import chain
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import List, Optional
 
+from genutility.args import non_negative_int
 from genutility.filesystem import MyDirEntryT, scandir_rec
 from genutility.rich import Progress, StdoutFileNoStyle
 from rich.console import Console
@@ -63,16 +64,6 @@ def write_row(csvwriter, entry: MyDirEntryT, error: Optional[Exception]) -> None
     except Exception as e:
         e.__cause__ = error
         raise RuntimeError("this shouldn't happen") from e
-
-
-def non_negative_int(value: str) -> int:
-    try:
-        result = int(value)
-    except ValueError as e:
-        raise ArgumentTypeError("must be an integer") from e
-    if result < 0:
-        raise ArgumentTypeError("must be non-negative")
-    return result
 
 
 def query_csv(

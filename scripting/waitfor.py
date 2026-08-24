@@ -3,6 +3,7 @@ import sys
 from time import sleep
 
 import requests
+from genutility.args import in_range, positive_float, positive_int
 from genutility.iter import range_count
 from requests.exceptions import ConnectionError, HTTPError, InvalidURL, MissingSchema, Timeout, URLRequired
 
@@ -15,15 +16,15 @@ if __name__ == "__main__":
 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--seconds", metavar="N", type=float, help="Wait for N seconds")
+    group.add_argument("--seconds", metavar="N", type=positive_float, help="Wait for N seconds")
     group.add_argument("--url", type=str, help="Wait until connection to URL succeeds")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument("--version", action="version", version=__version__)
-    parser.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT, help="Network timeout")
+    parser.add_argument("--timeout", type=positive_float, default=DEFAULT_TIMEOUT, help="Network timeout")
     parser.add_argument(
         "--max-tries",
         metavar="N",
-        type=int,
+        type=positive_int,
         default=None,
         help="Specifies the maximum number of attempts. Infinite if not given.",
     )
@@ -31,7 +32,7 @@ if __name__ == "__main__":
         "--status-codes",
         metavar="N",
         nargs="+",
-        type=int,
+        type=in_range(100, 600),
         default=set(),
         help="Acceptable HTTP status codes. If not specified all status codes are accepted.",
     )

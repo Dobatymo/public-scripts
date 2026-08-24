@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[datetime,filesystem,logging,rich]",
+#     "genutility[args,datetime,filesystem,logging,rich]>=0.0.122",
 #     "rich",
 # ]
 # ///
@@ -15,6 +15,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional
 
+from genutility.args import int_at_least, positive_int
 from genutility.datetime import now
 from genutility.filesystem import filter_recall, scandir_error_log_warning, scandir_rec
 from genutility.logging import IsoDatetimeFormatter
@@ -190,10 +191,12 @@ if __name__ == "__main__":
 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument("--path", type=Path, required=True, help="Input file path")
-    parser.add_argument("--chunk-size", type=int, default=DEFAULT_CHUNK_SIZE, help="Chunk size for one read call")
+    parser.add_argument(
+        "--chunk-size", type=positive_int, default=DEFAULT_CHUNK_SIZE, help="Chunk size for one read call"
+    )
     parser.add_argument(
         "--buffering",
-        type=int,
+        type=int_at_least(-1),
         default=DEFAULT_BUFFERING,
         help="Use -1 for default buffering, 0 for unbuffered and larger values the buffer size",
     )

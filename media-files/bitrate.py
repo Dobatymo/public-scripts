@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "genutility",
+#     "genutility[args]>=0.0.122",
 #     "pymediainfo",
 #     "humanfriendly",
 #     "rich",
@@ -14,9 +14,10 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Sequence, Tuple
 
+from genutility.args import byte_size_si, non_negative_int
 from genutility.filesystem import fileextensions
 from genutility.rich import Progress
-from humanfriendly import format_size, parse_size
+from humanfriendly import format_size
 from pymediainfo import MediaInfo
 from rich.logging import RichHandler
 from rich.progress import Progress as RichProgress
@@ -112,24 +113,24 @@ directory that passes the given thresholds.
     parser.add_argument("path", nargs="+", type=Path, help="Root directory to scan recursively for video files.")
     parser.add_argument(
         "--min-files",
-        type=int,
+        type=non_negative_int,
         default=1,
         metavar="N",
         help="Minimum number of video files required in a directory (including subdirectories) for it to be reported",
     )
     parser.add_argument(
         "--min-total-size",
-        type=parse_size,
+        type=byte_size_si,
         default=0,
         metavar="N",
-        help="Minimum cumulative file size required in a directory (across all included video files) for it to be reported. Accepts human-friendly values like '500MB' or '2GiB'.",
+        help="Minimum cumulative file size in bytes; optional K/M/G/T/P/E/Z/Y suffixes use base 1000",
     )
     parser.add_argument(
         "--min-mean-bitrate",
-        type=parse_size,
+        type=byte_size_si,
         default=0,
         metavar="N",
-        help="Minimum average bitrate (across all included video files in a directory) required for it to be reported. Accepts human-friendly values like '1Mbps' or '800k'.",
+        help="Minimum average bitrate; optional K/M/G/T/P/E/Z/Y suffixes use base 1000",
     )
     parser.add_argument(
         "--verbose",

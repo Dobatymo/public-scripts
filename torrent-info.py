@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,file,json,torrent]",
+#     "genutility[args,file,json,torrent]>=0.0.122",
 # ]
 # ///
 import json
@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 from pathlib import Path
 from pprint import pprint
 
-from genutility.args import is_file
+from genutility.args import is_file, positive_int
 from genutility.file import PathOrTextIO
 from genutility.json import BuiltinEncoder
 from genutility.torrent import read_torrent, torrent_info_hash
@@ -28,7 +28,7 @@ def todict(obj):
 def main():
     parser = ArgumentParser(description="Show torrent file information")
     parser.add_argument("path", type=is_file, help="Path to torrent file")
-    parser.add_argument("--width", type=int, default=80, help="Terminal width")
+    parser.add_argument("--width", type=positive_int, default=80, help="Terminal width")
     parser.add_argument("--compact", action="store_true", help="Compact output")
     parser.add_argument("--json", action="store_true", help="Use JSON format instead of pretty-print.")
     parser.add_argument("--out", type=Path, help="Out path. If not specified, output will be printed to screen.")

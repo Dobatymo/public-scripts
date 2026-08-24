@@ -1,12 +1,13 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[file,iter]",
+#     "genutility[args,file,iter]>=0.0.122",
 # ]
 # ///
 from argparse import ArgumentParser
 from pathlib import Path
 
+from genutility.args import non_negative_int
 from genutility.file import iterfilelike
 from genutility.iter import iter_equal
 
@@ -22,8 +23,8 @@ def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("file1", type=Path)
     parser.add_argument("file2", type=Path)
-    parser.add_argument("seek1", type=int, default=0)
-    parser.add_argument("seek2", type=int, default=0)
+    parser.add_argument("seek1", type=non_negative_int, default=0)
+    parser.add_argument("seek2", type=non_negative_int, default=0)
     parser.add_argument("maxsize", type=int)
     args = parser.parse_args()
 

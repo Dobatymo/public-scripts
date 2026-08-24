@@ -2,7 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "ctypes-windows-sdk>=0.0.16",
-#     "genutility",
+#     "genutility[args]>=0.0.122",
 #     "rich",
 # ]
 # ///
@@ -19,6 +19,7 @@ from cwinsdk.shared import winerror
 from cwinsdk.shared.guiddef import GUID
 from cwinsdk.um import winbase, winioctl, winnt
 from cwinsdk.um.fileapi import GetDriveTypeW, GetVolumeInformationW
+from genutility.args import non_negative_int
 from genutility.win.device import (
     DEVICE_TYPE,
     FILESYSTEM_STATISTICS_TYPE,
@@ -774,7 +775,9 @@ if __name__ == "__main__":
     group1.add_argument("--show-volumes", action="store_true")
     group1.add_argument("--query-volume-by-logical-drive", type=is_logical_drive_arg, metavar="LOGICAL_DRIVE")
     group1.add_argument("--query-volume-by-guid-path", type=is_volume_guid_path_arg, metavar="VOLUME_GUID_PATH")
-    group1.add_argument("--query-volume-by-harddisk-volume-index", type=int, metavar="HARDDISK_VOLUME_INDEX")
+    group1.add_argument(
+        "--query-volume-by-harddisk-volume-index", type=non_negative_int, metavar="HARDDISK_VOLUME_INDEX"
+    )
     group1.add_argument("--show-disks", action="store_true")
     group1.add_argument(
         "--query-disk-by-type-and-index", nargs=2, metavar=("TYPE", "INDEX"), help="For example `PHYSICALDRIVE 0`"

@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from genutility.args import non_negative_int
 from genutility.rand import randbytes
 
 
@@ -18,7 +19,7 @@ if __name__ == "__main__":
 
     parser = ArgumentParser()
     parser.add_argument("--path", default="random.bin", type=Path)
-    parser.add_argument("--size", default=1024**2, type=int)
+    parser.add_argument("--size", default=1024**2, type=non_negative_int)
     args = parser.parse_args()
 
     create_random_file(args.path, args.size)

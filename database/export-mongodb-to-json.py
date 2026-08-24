@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,json,rich,signal]",
+#     "genutility[args,json,rich,signal]>=0.0.122",
 #     "pymongo",
 #     "rich",
 # ]
@@ -11,7 +11,7 @@ import logging
 from argparse import ArgumentParser, Namespace
 
 from bson import json_util
-from genutility.args import json_file
+from genutility.args import json_file, non_negative_int
 from genutility.json import json_lines
 from genutility.rich import Progress
 from genutility.signal import HandleKeyboardInterrupt
@@ -61,7 +61,7 @@ def main() -> None:
     parser.add_argument("connection_string", metavar="connection-string", help="MongoDB connection URI")
     parser.add_argument("--database", required=True, help="Database name")
     parser.add_argument("--collection", required=True, help="Collection name")
-    parser.add_argument("--batch-size", type=int, default=10000, help="Batch size")
+    parser.add_argument("--batch-size", type=non_negative_int, default=10000, help="Batch size")
     parser.add_argument(
         "--tls-ca-file",
         help="Specifies the location of a local .pem file that contains the root certificate chain from the Certificate Authority. This file is used to validate the certificate presented by the mongod/mongos instance.",

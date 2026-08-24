@@ -8,7 +8,7 @@ from os import fspath
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Tuple
 
-from genutility.args import abs_path, existing_path, in_range, suffix
+from genutility.args import abs_path, existing_path, in_range, non_negative_int, positive_float, positive_int, suffix
 from genutility.filesystem import fileextensions, mdatetime
 from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
@@ -318,29 +318,34 @@ def main():
         "--colsrows",
         nargs=2,
         metavar=("C", "R"),
-        type=int,
+        type=positive_int,
         help="Create sheet with C columns and R rows. Thumbnails will be equally spaced timewise.",
     )
-    group.add_argument("-s", "--seconds", metavar="N", type=float, help="Grab a video frame every N seconds")
-    parser.add_argument("--cols", metavar="C", type=int, help="Number of columns")
+    group.add_argument("-s", "--seconds", metavar="N", type=positive_float, help="Grab a video frame every N seconds")
+    parser.add_argument("--cols", metavar="C", type=positive_int, help="Number of columns")
 
     parser.add_argument("-e", "--header", action="store_true", help="Add file meta information to the sheet.")
     parser.add_argument(
         "--thumbsize",
         nargs=2,
         metavar=("W", "H"),
-        type=int,
+        type=positive_int,
         default=(250, 250),
         help="Maximum dimensions of thumbnails",
     )
     parser.add_argument(
-        "--padding", nargs=2, metavar=("W", "H"), type=int, default=DEFAULT_PADDING, help="Padding between thumbnails"
+        "--padding",
+        nargs=2,
+        metavar=("W", "H"),
+        type=non_negative_int,
+        default=DEFAULT_PADDING,
+        help="Padding between thumbnails",
     )
     parser.add_argument("--background", type=str, default="black", help="Background color")
     parser.add_argument("--textcolor", type=str, default="white", help="Text color")
     parser.add_argument("-t", "--timestamp", action="store_true", help="Include timestamp in thumbnails")
     parser.add_argument("--fontfile", default=DEFAULT_FONTFILE, help="Path to truetype font file")
-    parser.add_argument("--fontsize", type=int, default=DEFAULT_FONTSIZE, help="Fontsize")
+    parser.add_argument("--fontsize", type=positive_int, default=DEFAULT_FONTSIZE, help="Fontsize")
     parser.add_argument(
         "--quality", type=in_range(1, 101), default=80, help="JPEG output quality, ignored if outpath is not .jpg"
     )

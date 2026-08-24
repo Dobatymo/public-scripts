@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[rich]",
+#     "genutility[args,rich]>=0.0.122",
 #     "rich",
 # ]
 # ///
@@ -15,13 +15,13 @@ import tempfile
 from argparse import (
     ArgumentDefaultsHelpFormatter,
     ArgumentParser,
-    ArgumentTypeError,
     Namespace,
     RawDescriptionHelpFormatter,
 )
 from pathlib import Path
 from typing import Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
+from genutility.args import positive_int
 from genutility.rich import Progress
 from rich.progress import Progress as RichProgress
 
@@ -437,13 +437,6 @@ def materialize_links(
                 planned_destinations.add(destination)
                 materialize_link(link, destination, method=method, apply=apply)
                 task.advance(delta=1)
-
-
-def positive_int(value: str) -> int:
-    number = int(value)
-    if number < 1:
-        raise ArgumentTypeError("must be at least 1")
-    return number
 
 
 def add_common_options(parser: ArgumentParser) -> None:

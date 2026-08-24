@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[datetime,twitch]",
+#     "genutility[args,datetime,twitch]>=0.0.122",
 # ]
 # ///
 import logging
@@ -11,6 +11,7 @@ import winsound
 from argparse import ArgumentParser
 from urllib.error import HTTPError, URLError
 
+from genutility.args import positive_int
 from genutility.datetime import now
 from genutility.twitch import TwitchAPI
 
@@ -19,7 +20,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument("username")
     parser.add_argument("clientid")
-    parser.add_argument("--interval", type=int, default=120)
+    parser.add_argument("--interval", type=positive_int, default=120)
     args = parser.parse_args()
 
     try:

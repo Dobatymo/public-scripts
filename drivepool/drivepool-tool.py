@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "ctypes-windows-sdk>=0.0.18",
-#     "genutility[file,filesystem,iter,rich,time]>=0.0.121",
+#     "genutility[args,file,filesystem,iter,rich,time]>=0.0.122",
 #     "rich",
 # ]
 # ///
@@ -18,7 +18,6 @@
 
 import json
 import logging
-import math
 import os
 import os.path
 import shutil
@@ -42,6 +41,7 @@ from cwinsdk.um.winnt import (
     PSECURITY_DESCRIPTOR,
     PSID,
 )
+from genutility.args import non_negative_float
 from genutility.file import equal_files
 from genutility.filesystem import long_path_support, scandir_error_log_warning, scandir_rec
 from genutility.iter import all_equal, batch
@@ -294,13 +294,6 @@ def parse_drive(value: str) -> str:
     if len(value) != 1 or not value.isascii() or not value.isalpha():
         raise ArgumentTypeError(f"Invalid drive letter: {value}")
     return f"{value.upper()}:\\"
-
-
-def parse_nonnegative_seconds(value: str) -> float:
-    seconds = float(value)
-    if not math.isfinite(seconds) or seconds < 0:
-        raise ArgumentTypeError("must be a finite, non-negative number")
-    return seconds
 
 
 def iter_pools(include_drives: Collection[str] = (), exclude_drives: Collection[str] = ()) -> Iterator[Path]:
@@ -574,7 +567,7 @@ if __name__ == "__main__":
     )
     subparser_a.add_argument(
         "--mtime-tolerance",
-        type=parse_nonnegative_seconds,
+        type=non_negative_float,
         default=DEFAULT_MTIME_TOLERANCE_SECONDS,
         metavar="SECONDS",
         help="Ignore modification-time differences up to this many seconds",

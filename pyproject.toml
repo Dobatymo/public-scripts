@@ -21,8 +21,8 @@ dependencies = [
   "ctypes-windows-sdk>=0.0.18",
   "enzyme>=0.5.2",
   """\
-  genutility[fileformats,filesystem,fingerprinting,hash,image,mediainfo,metrics,pillow,rich,torrent,tqdm,videofile]>=0.\
-  0.114\
+  genutility[args,fileformats,filesystem,fingerprinting,hash,image,mediainfo,metrics,pillow,rich,torrent,tqdm,videofile\
+  ]>=0.0.122\
   """,
   "langcodes>=3.3,<3.5",
   "language-data>=1.1,<1.2; python_version<'3.9'",

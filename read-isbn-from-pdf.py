@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.9"
 # dependencies = [
-#     "genutility[rich]",
+#     "genutility[args,rich]>=0.0.122",
 #     "isbn-hyphenate",
 #     "pyisbn",
 #     "pypdf[crypto]>=6.0.0",
@@ -22,6 +22,7 @@ from typing import Any, Dict, Iterable, Optional, Sequence
 
 import isbn_hyphenate
 import regex  # required for duplicate names in groups
+from genutility.args import positive_int
 from genutility.rich import Progress
 from isbn_hyphenate.isbn_hyphenate import IsbnUnableToHyphenateError
 from pyisbn import Isbn10, Isbn13
@@ -228,7 +229,7 @@ def main() -> None:
     from argparse import ArgumentParser
 
     parser = ArgumentParser()
-    parser.add_argument("--num-pages", type=int, default=20, help="Number of pages to search for ISBNs")
+    parser.add_argument("--num-pages", type=positive_int, default=20, help="Number of pages to search for ISBNs")
     parser.add_argument(
         "--do",
         action="store_true",

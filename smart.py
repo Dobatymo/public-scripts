@@ -2,7 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "ctypes-windows-sdk>=0.0.16",
-#     "genutility",
+#     "genutility[args]>=0.0.122",
 #     "rich",
 #     "typing-extensions",
 # ]
@@ -49,6 +49,7 @@ from cwinsdk.shared.ntddstor import STORAGE_BUS_TYPE
 from cwinsdk.shared.ntdef import PVOID
 from cwinsdk.shared.scsi import CDB, IOCTL_SCSI_MINIPORT_IDENTIFY, SCSIOP_ATA_PASSTHROUGH12, SCSIOP_ATA_PASSTHROUGH16
 from cwinsdk.um import winioctl
+from genutility.args import non_negative_int
 from genutility.win.device import Drive, MyDeviceIoControl, enum_disks, struct_to_array
 from rich.console import Console
 from rich.table import Table
@@ -1132,7 +1133,7 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--all-drives", action="store_true", help="Show information for all drives")
-    group.add_argument("--drive-index", metavar="N", type=int, help="Show information for drive N")
+    group.add_argument("--drive-index", metavar="N", type=non_negative_int, help="Show information for drive N")
     parser.add_argument(
         "--method",
         choices=[i.value for i in Methods],

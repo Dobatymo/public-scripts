@@ -1,10 +1,12 @@
 from argparse import ArgumentParser
 from pathlib import Path
 
+from genutility.args import non_negative_int
+
 
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument("size", type=int, help="File size in MB")
+    parser.add_argument("size", type=non_negative_int, help="File size in MB")
     parser.add_argument("path", type=Path)
     args = parser.parse_args()
 

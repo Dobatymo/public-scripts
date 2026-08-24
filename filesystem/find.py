@@ -2,7 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "ctypes-windows-sdk>=0.0.18",
-#     "genutility[file,filesystem,rich]>=0.0.121",
+#     "genutility[args,file,filesystem,rich]>=0.0.122",
 #     "rich",
 #     "send2trash",
 # ]
@@ -39,7 +39,7 @@ from cwinsdk.um.winnt import (
     FILE_ATTRIBUTE_UNPINNED,
 )
 from genutility._files import to_dos_path
-from genutility.args import ascii, base64, is_dir, suffix_lower
+from genutility.args import ascii, base64, encoding_name, int_at_least, is_dir, non_negative_int, suffix_lower
 from genutility.file import is_all_byte, read_file
 from genutility.filesystem import (
     PathType,
@@ -512,7 +512,9 @@ if __name__ == "__main__":
         help="Find files which don't adhere to a certain encoding.",
     )
     subparser_a.set_defaults(func=bad_encoding)
-    subparser_a.add_argument("--encoding", default=DEFAULT_ENCODING, help="Use this encoding to decode files")
+    subparser_a.add_argument(
+        "--encoding", type=encoding_name, default=DEFAULT_ENCODING, help="Use this encoding to decode files"
+    )
 
     subparser_b = subparsers.add_parser(
         "all-zero", formatter_class=ArgumentDefaultsHelpFormatter, help="Find files which consist only of zero bytes"
@@ -573,7 +575,7 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
     subparser_f.set_defaults(func=line_search_regex)
     subparser_f.add_argument("-p", "--pattern", type=re.compile, required=True, help="Pattern to match line")
     subparser_f.add_argument("--early-stop", action="store_true", help="Stop processing file after first match")
-    subparser_f.add_argument("--encoding", default="utf-8", help="File encoding")
+    subparser_f.add_argument("--encoding", type=encoding_name, default="utf-8", help="File encoding")
     subparser_f.add_argument("--errors", choices=ALL_ERRORS, default="replace", help="File decoding error handling")
 
     subparser_g = subparsers.add_parser(
@@ -592,7 +594,9 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
         "long-paths", formatter_class=ArgumentDefaultsHelpFormatter, help="Find long paths"
     )
     subparser_h.set_defaults(func=long_paths)
-    subparser_h.add_argument("--length", type=int, required=True, help="Print all paths longer than length")
+    subparser_h.add_argument(
+        "--length", type=non_negative_int, required=True, help="Print all paths longer than length"
+    )
 
     subparser_i = subparsers.add_parser(
         "exact-content-match",
@@ -617,14 +621,14 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
     subparser_j.add_argument("--sub-pattern", type=re.compile, help="Regex sub pattern")
     subparser_j.add_argument("--sub-replacement", type=str, help="Regex sub replacement")
     subparser_j.add_argument(
-        "--at-least", metavar="N", type=int, default=2, help="Print only groups with at least N paths"
+        "--at-least", metavar="N", type=int_at_least(2), default=2, help="Print only groups with at least N paths"
     )
 
     subparser_k = subparsers.add_parser(
         "has-filesize", formatter_class=ArgumentDefaultsHelpFormatter, help="Find files which have a certain filesize"
     )
     subparser_k.set_defaults(func=has_filesize)
-    subparser_k.add_argument("--size", type=int, required=True, help="Key to apply transformation to")
+    subparser_k.add_argument("--size", type=non_negative_int, required=True, help="Key to apply transformation to")
 
     subparser_l = subparsers.add_parser(
         "alternate-data-stream",

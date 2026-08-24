@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.9"
 # dependencies = [
-#     "genutility[args,rich]",
+#     "genutility[args,rich]>=0.0.122",
 #     "libtorrent",
 #     "rich",
 #     "libtorrent-windows-dll",
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Optional
 
 import libtorrent
-from genutility.args import existing_path, future_file
+from genutility.args import existing_path, future_file, multiple_of, positive_int
 from genutility.rich import Progress
 from rich.progress import Progress as RichProgress
 
@@ -100,13 +100,13 @@ def main():
 
     parser.add_argument(
         "--pieces",
-        type=int,
+        type=positive_int,
         default=None,
         help="Approximate number of pieces in resulting torrent file. 1000 will be used if --piece-size is not given instead..",
     )
     parser.add_argument(
         "--piece-size",
-        type=int,
+        type=multiple_of(16384, minimum=1),
         default=None,
         help="Piece size. If not given, it will be automatically calculated to match --pieces.",
     )

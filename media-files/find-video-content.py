@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#   "genutility[filesystem]>=0.0.114",
+#   "genutility[args,filesystem]>=0.0.122",
 #   "numpy>=1.24",
 #   "opencv-python>=4.8",
 # ]
@@ -18,6 +18,7 @@ from typing import Deque, Iterable, Iterator, List, Optional, Set, Tuple, cast
 
 import cv2
 import numpy as np
+from genutility.args import int_at_least, positive_float
 from genutility.filesystem import MyDirEntry, scandir_rec
 
 logger = logging.getLogger(__name__)
@@ -487,20 +488,20 @@ def build_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--sample-every",
-        type=float,
+        type=positive_float,
         default=1.0,
         metavar="SECONDS",
         help="Seconds between analyzed frames (default: 1)",
     )
     parser.add_argument(
         "--minimum-duration",
-        type=float,
+        type=positive_float,
         metavar="SECONDS",
         help="Required continuous duration for partial/moving modes (default: 10)",
     )
     parser.add_argument(
         "--analysis-width",
-        type=int,
+        type=int_at_least(64),
         default=640,
         metavar="PIXELS",
         help="Downscale wider frames before analysis (default: 640)",
@@ -512,14 +513,8 @@ def build_parser() -> ArgumentParser:
 def validate_args(parser: ArgumentParser, args: Namespace) -> None:
     if not args.path.is_dir():
         parser.error(f"path is not a directory: {args.path}")
-    if not math.isfinite(args.sample_every) or args.sample_every <= 0:
-        parser.error("--sample-every must be finite and greater than zero")
-    if args.analysis_width < 64:
-        parser.error("--analysis-width must be at least 64 pixels")
     if args.mode == "watermark_persistent" and args.minimum_duration is not None:
         parser.error("--minimum-duration is only valid with watermark_partial or watermark_moving")
-    if args.minimum_duration is not None and (not math.isfinite(args.minimum_duration) or args.minimum_duration <= 0):
-        parser.error("--minimum-duration must be finite and greater than zero")
     minimum_duration = args.minimum_duration or DEFAULT_MINIMUM_DURATION
     if args.mode != "watermark_persistent" and minimum_duration < args.sample_every * 2:
         parser.error("--minimum-duration must span at least two --sample-every intervals")

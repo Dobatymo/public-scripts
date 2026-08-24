@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility",
+#     "genutility>=0.0.122",
 #     "pillow",
 #     "pyexiv2",
 # ]
@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Dict
 
 import pyexiv2
-from genutility.args import is_file
+from genutility.args import is_file, positive_float, positive_int
 from PIL import Image, ImageOps
 
 metakeys = ["exif", "iptc", "xmp", "raw_xmp", "comment", "icc"]
@@ -61,8 +61,8 @@ def main():
     parser.add_argument("--in-path", type=is_file, required=True)
     parser.add_argument("--out-path", type=Path, required=True)
     parser.add_argument("--grayscale", action="store_true")
-    parser.add_argument("--resize-ratio", nargs=2, metavar=("W", "H"), type=float)
-    parser.add_argument("--resize-pixel", nargs=2, metavar=("W", "H"), type=int)
+    parser.add_argument("--resize-ratio", nargs=2, metavar=("W", "H"), type=positive_float)
+    parser.add_argument("--resize-pixel", nargs=2, metavar=("W", "H"), type=positive_int)
     parser.add_argument("--overwrite", action="store_true")
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()

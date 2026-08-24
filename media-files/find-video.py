@@ -2,7 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #   "enzyme>=0.5.2",
-#   "genutility[mediainfo]>=0.0.114",
+#   "genutility[args,mediainfo]>=0.0.122",
 #   "langcodes>=3.3,<3.5",
 #   "language-data>=1.1,<1.2; python_version < '3.9'",
 #   "language-data>=1.3; python_version >= '3.9'",
@@ -18,6 +18,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, cast
 
 import enzyme
 import langcodes
+from genutility.args import non_negative_float
 from genutility.filesystem import MyDirEntry, scandir_rec
 from genutility.mediainfo import MediaInfoHelper
 
@@ -388,7 +389,7 @@ def build_parser() -> ArgumentParser:
     )
     parser.add_argument(
         "--max-difference",
-        type=float,
+        type=non_negative_float,
         metavar="SECONDS",
         help="Maximum track-duration difference; default 10 seconds; only valid with inconsistent_lengths",
     )
@@ -402,10 +403,7 @@ def validate_args(parser: ArgumentParser, args: Namespace) -> None:
         parser.error("audio_language requires at least one --language")
     if args.mode != "audio_language" and args.languages:
         parser.error("--language is only valid with audio_language")
-    if args.mode == "inconsistent_lengths":
-        if args.max_difference is not None and (not math.isfinite(args.max_difference) or args.max_difference < 0):
-            parser.error("--max-difference must be finite and non-negative")
-    elif args.max_difference is not None:
+    if args.mode != "inconsistent_lengths" and args.max_difference is not None:
         parser.error("--max-difference is only valid with inconsistent_lengths")
 
 

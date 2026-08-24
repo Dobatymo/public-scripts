@@ -6,7 +6,7 @@
 #     "tqdm",
 #     "numpy",
 #     "more-itertools",
-#     "genutility[json,tqdm,videofile]>=0.0.119",
+#     "genutility[args,json,tqdm,videofile]>=0.0.122",
 #     "opencv-python",
 # ]
 # ///
@@ -30,6 +30,7 @@ from typing import Any, Collection, Dict, Iterable, Iterator, List, Optional, Se
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
+from genutility.args import finite_float, non_negative_int, positive_float, positive_int
 from genutility.json import json_lines
 from genutility.numpy import fill_gaps, remove_spikes
 from genutility.tqdm import Progress, TqdmMultiprocessing, TqdmProcess
@@ -762,12 +763,16 @@ def main() -> None:
         default=[],
         help="Additional individual files to compare. The first file will be compared to the second, the third to the forth, and so on.",
     )
-    parser_a.add_argument("--size1", nargs=2, metavar=("W", "H"), type=int, help="Resize first video to width x height")
-    parser_a.add_argument("--size2", nargs=2, metavar=("W", "H"), type=int, help="Resize first video to width x height")
-    parser_a.add_argument("--skip-nth-1", metavar="N", default=0, type=int, help="Skip every n-th frame")
-    parser_a.add_argument("--skip-nth-2", metavar="N", default=0, type=int, help="Skip every n-th frame")
-    parser_a.add_argument("--skip1", metavar="N", default=0, type=int, help="Skip first N frames")
-    parser_a.add_argument("--skip2", metavar="N", default=0, type=int, help="Skip first N frames")
+    parser_a.add_argument(
+        "--size1", nargs=2, metavar=("W", "H"), type=positive_int, help="Resize first video to width x height"
+    )
+    parser_a.add_argument(
+        "--size2", nargs=2, metavar=("W", "H"), type=positive_int, help="Resize first video to width x height"
+    )
+    parser_a.add_argument("--skip-nth-1", metavar="N", default=0, type=non_negative_int, help="Skip every n-th frame")
+    parser_a.add_argument("--skip-nth-2", metavar="N", default=0, type=non_negative_int, help="Skip every n-th frame")
+    parser_a.add_argument("--skip1", metavar="N", default=0, type=non_negative_int, help="Skip first N frames")
+    parser_a.add_argument("--skip2", metavar="N", default=0, type=non_negative_int, help="Skip first N frames")
     parser_a.add_argument(
         "--ignore-frame-time-difference", action="store_true", help="Suppress frame time difference error message"
     )
@@ -777,11 +782,13 @@ def main() -> None:
         action="store_true",
         help="Ignore file extension when matching files from the two directory paths. Otherwise only files with the same name and extensions are compared.",
     )
-    parser_a.add_argument("--limit", metavar="N", default=None, type=int, help="Limit comparison the first N frames")
+    parser_a.add_argument(
+        "--limit", metavar="N", default=None, type=non_negative_int, help="Limit comparison the first N frames"
+    )
     parser_a.add_argument(
         "--workers",
         metavar="N",
-        type=int,
+        type=positive_int,
         default=DEFAULT_WORKERS,
         help="Number of concurrent processes",
     )
@@ -808,8 +815,8 @@ def main() -> None:
         default=DEFAULT_XAXIS,
         help="Weither to show number of seconds or number of frames in x-axis of the plot",
     )
-    parser_b.add_argument("--threshold", type=float, help="Metric threshold to use to export video differences")
-    parser_b.add_argument("--fps", type=float, help="FPS of exported video. Manually read from source file.")
+    parser_b.add_argument("--threshold", type=finite_float, help="Metric threshold to use to export video differences")
+    parser_b.add_argument("--fps", type=positive_float, help="FPS of exported video. Manually read from source file.")
     parser_b.add_argument(
         "--export", type=Path, help="When given, a video showing the different frames is exported to this path"
     )
@@ -829,7 +836,7 @@ def main() -> None:
     parser_c.add_argument("path2", type=Path, help="Second input file")
     parser_c.add_argument(
         "--size",
-        type=int,
+        type=positive_int,
         default=100,
         help="Number of frames to check for alignment. Must be larger than the alignment offset.",
     )
@@ -839,8 +846,8 @@ def main() -> None:
         choices=metric_funcs.keys(),
         help="Image quality metric",
     )
-    parser_c.add_argument("--skip-nth-1", metavar="N", default=0, type=int, help="Skip every n-th frame")
-    parser_c.add_argument("--skip-nth-2", metavar="N", default=0, type=int, help="Skip every n-th frame")
+    parser_c.add_argument("--skip-nth-1", metavar="N", default=0, type=non_negative_int, help="Skip every n-th frame")
+    parser_c.add_argument("--skip-nth-2", metavar="N", default=0, type=non_negative_int, help="Skip every n-th frame")
 
     args = parser.parse_args()
 

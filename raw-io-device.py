@@ -2,7 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "ctypes-windows-sdk>=0.0.16",
-#     "genutility[args,file,iter]",
+#     "genutility[args,file,iter]>=0.0.122",
 # ]
 # ///
 import errno
@@ -15,7 +15,7 @@ from textwrap import dedent
 from typing import BinaryIO, Iterator, Optional
 
 from cwinsdk.shared.winerror import ERROR_INVALID_PARAMETER
-from genutility.args import multiple_of
+from genutility.args import in_range, multiple_of, non_negative_int
 from genutility.file import FILE_IO_BUFFER_SIZE, OptionalWriteOnlyFile
 from genutility.iter import progressdata
 from genutility.win.device import Drive, Volume
@@ -216,18 +216,23 @@ def main():
     parser.add_argument("volume", type=str, help=dedent(Volume.from_raw_path.__doc__))
     group_seek = parser.add_mutually_exclusive_group(required=False)
     group_seek.add_argument(
-        "--seek-byte", type=multiple_of(DEFAULT_SECTOR_SIZE), default=None, help="Seek to byte number"
+        "--seek-byte", type=multiple_of(DEFAULT_SECTOR_SIZE, minimum=0), default=None, help="Seek to byte number"
     )
-    group_seek.add_argument("--seek-sector", type=int, default=None, help="Seek to sector number")
+    group_seek.add_argument("--seek-sector", type=non_negative_int, default=None, help="Seek to sector number")
     parser.add_argument(
         "--out",
         type=str,
         default=None,
         help="Create a image file of the volume or disk content. Use .gz or .bz2 file extension to store it compressed.",
     )
-    parser.add_argument("--bs", type=int, default=DEFAULT_BLOCKSIZE, help="Read blocksize")
     parser.add_argument(
-        "--compresslevel", type=int, default=9, help="Compression level. Only valid for gzip and bz2 files."
+        "--bs",
+        type=multiple_of(DEFAULT_SECTOR_SIZE, minimum=1),
+        default=DEFAULT_BLOCKSIZE,
+        help="Read blocksize",
+    )
+    parser.add_argument(
+        "--compresslevel", type=in_range(1, 10), default=9, help="Compression level. Only valid for gzip and bz2 files."
     )
     parser.add_argument(
         "--extended",

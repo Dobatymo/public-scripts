@@ -25,20 +25,24 @@ def sync_srt(
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
-    from genutility.args import existing_path, new_path
+    from genutility.args import encoding_name, existing_path, finite_float, new_path, positive_float
     from genutility.filesystem import scandir_rec
     from genutility.stdio import errorquit
 
     parser = ArgumentParser(description="Apply simple transformations to srt subtitles files.")
     parser.add_argument("inpath", type=existing_path, help="Input file or directory.")
     parser.add_argument("outpath", type=new_path, help="Output file or directory.")
-    parser.add_argument("--encoding", default=DEFAULT_ENCODING, help="File encoding")
+    parser.add_argument("--encoding", type=encoding_name, default=DEFAULT_ENCODING, help="File encoding")
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument(
-        "--fps", metavar=("FROM-FPS", "TO-FPS"), nargs=2, type=float, help="Change the rate from x fps to y fps"
+        "--fps",
+        metavar=("FROM-FPS", "TO-FPS"),
+        nargs=2,
+        type=positive_float,
+        help="Change the rate from x fps to y fps",
     )
-    group.add_argument("--delay", type=float, help="Delay by +x or -x seconds")
+    group.add_argument("--delay", type=finite_float, help="Delay by +x or -x seconds")
 
     args = parser.parse_args()
 
