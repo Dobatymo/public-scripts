@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,filesystem,rich]>=0.0.122",
+#     "genutility[args,filesystem,rich]>=0.0.123",
 #     "polars",
 #     "rich",
 # ]
@@ -11,14 +11,14 @@ import os
 import stat
 import sys
 import warnings
-from argparse import ArgumentParser, RawDescriptionHelpFormatter
+from argparse import ArgumentParser, ArgumentTypeError, RawDescriptionHelpFormatter
 from contextlib import suppress
 from itertools import chain
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import List, Optional
 
-from genutility.args import non_negative_int
+from genutility.args import is_dir, is_file, is_file_nofollow, is_file_or_new_nofollow, non_negative_int
 from genutility.filesystem import MyDirEntryT, scandir_rec
 from genutility.rich import Progress, StdoutFileNoStyle
 from rich.console import Console
@@ -141,6 +141,7 @@ def scan_paths(
     all_mounts: bool,
     out_path: Optional[Path],
     overwrite: bool,
+    follow_links: bool,
     parser: ArgumentParser,
 ) -> None:
     for path in in_paths:
@@ -187,7 +188,14 @@ def scan_paths(
                 progress = Progress(p)
 
                 for entry in progress.track(
-                    scandir_rec(path, files=True, dirs=True, others=True, follow_symlinks=False, errorfunc=write_error)
+                    scandir_rec(
+                        path,
+                        files=True,
+                        dirs=True,
+                        others=True,
+                        follow_symlinks=follow_links,
+                        errorfunc=write_error,
+                    )
                 ):
                     write_row(fw, entry, None)
 
@@ -199,15 +207,18 @@ def main(argv=None) -> None:
     scan_parser = subparsers.add_parser(
         "scan",
         help="scan directories and write inventory CSV",
-        description="Scan directories without following symlinks or junctions and write inventory CSV.",
+        description="Scan directories to inventory CSV; links are not followed unless --follow-links is supplied.",
         epilog="""Examples:
   py listdir.py scan C:\\ D:\\ --out-path inventory.csv
   py listdir.py scan --all-mounts --out-path mounts.csv --overwrite""",
         formatter_class=RawDescriptionHelpFormatter,
     )
-    scan_parser.add_argument("in_paths", nargs="*", metavar="PATH", type=Path, help="directories to scan")
+    scan_parser.add_argument("in_paths", nargs="*", metavar="PATH", type=is_dir, help="directories to scan")
     scan_parser.add_argument("--all-mounts", action="store_true", help="scan all Windows mount points")
-    scan_parser.add_argument("--out-path", type=Path, help="output CSV path (default: stdout)")
+    scan_parser.add_argument(
+        "--follow-links", action="store_true", help="follow file and directory links during scanning"
+    )
+    scan_parser.add_argument("--out-path", type=is_file_or_new_nofollow, help="output CSV path (default: stdout)")
     scan_parser.add_argument("--overwrite", action="store_true", help="overwrite --out-path if it exists")
 
     query_parser = subparsers.add_parser(
@@ -228,7 +239,7 @@ def main(argv=None) -> None:
         "--errors-only", action="store_true", help="only write rows with a non-empty error column"
     )
     output_group = query_parser.add_mutually_exclusive_group()
-    output_group.add_argument("--out-path", type=Path, help="output CSV path (default: stdout)")
+    output_group.add_argument("--out-path", type=is_file_or_new_nofollow, help="output CSV path (default: stdout)")
     output_group.add_argument("--in-place", action="store_true", help="atomically replace the input CSV")
     query_parser.add_argument("--overwrite", action="store_true", help="overwrite --out-path if it exists")
 
@@ -236,14 +247,14 @@ def main(argv=None) -> None:
     if args.mode == "scan":
         if bool(args.in_paths) == args.all_mounts:
             scan_parser.error("provide directory paths or --all-mounts, but not both")
-        scan_paths(args.in_paths, args.all_mounts, args.out_path, args.overwrite, scan_parser)
+        scan_paths(args.in_paths, args.all_mounts, args.out_path, args.overwrite, args.follow_links, scan_parser)
     elif args.mode == "query":
-        if not args.in_csv.is_file():
-            query_parser.error(f"{os.fspath(args.in_csv)} is not a valid file")
+        try:
+            (is_file_nofollow if args.in_place else is_file)(args.in_csv)
+        except ArgumentTypeError as e:
+            query_parser.error(str(e))
         if args.in_place and args.overwrite:
             query_parser.error("--overwrite cannot be used with --in-place")
-        if args.in_place and args.in_csv.is_symlink():
-            query_parser.error("--in-place does not replace symlink inputs")
         if args.out_path is not None and args.out_path.exists() and os.path.samefile(args.in_csv, args.out_path):
             query_parser.error("use --in-place to overwrite the input CSV")
         try:

@@ -2,26 +2,27 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "beautifulsoup4",
-#     "genutility[args,atomic,hash]",
+#     "genutility[args,atomic,filesystem,hash]>=0.0.123",
 #     "requests",
 #     "typing-extensions",
 # ]
 # ///
 import json
 import logging
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Tuple
 
 import requests
 from bs4 import BeautifulSoup
-from genutility.args import is_dir
+from genutility.args import is_dir, is_dir_nofollow
 from genutility.atomic import sopen
+from genutility.filesystem import scandir_ext
 from genutility.hash import sha1_hash_file
 from typing_extensions import Self
 
 DEFAULT_TIMEOUT = 30
-DEFAULT_CACHEFILE = "microsoft-hashes.json"
+DEFAULT_CACHEFILE = Path("microsoft-hashes.json")
 
 
 class BackendBase:
@@ -115,7 +116,7 @@ class MicrosoftHashes:
     hashes: Dict[str, Optional[str]]
     backendsmap = {"heidoc": HeidocBackend, "adguard": AdguardBackend}  # noqa: RUF012  # this should be a frozendict in the future
 
-    def __init__(self, cachefile: Optional[str] = None, backend: Optional[str] = None) -> None:
+    def __init__(self, cachefile: Optional[Path] = None, backend: Optional[str] = None) -> None:
         self.cachefile = cachefile or DEFAULT_CACHEFILE
 
         if backend is None:
@@ -124,7 +125,7 @@ class MicrosoftHashes:
             self.backends = [self.backendsmap[backend]()]
 
         try:
-            with open(self.cachefile, encoding="utf-8") as fr:
+            with self.cachefile.open(encoding="utf-8") as fr:
                 self.hashes = json.load(fr)
         except FileNotFoundError:
             self.hashes = {}
@@ -156,22 +157,25 @@ class MicrosoftHashes:
         self.close()
 
 
-def iter_hashes(basepath: Path, recursive: bool = False) -> Iterator[Tuple[Path, str]]:
-    if recursive:
-        globfunc = basepath.rglob
-    else:
-        globfunc = basepath.glob
-
-    for path in globfunc("*.iso"):
+def iter_hashes(basepath: Path, recursive: bool = False, follow_links: bool = False) -> Iterator[Tuple[Path, str]]:
+    for entry in scandir_ext(basepath, include={".iso"}, rec=recursive, follow_symlinks=follow_links):
+        path = Path(entry.path)
         hashhex = sha1_hash_file(path).hexdigest()
         yield path, hashhex
 
 
-def rename_all_in_folder(basepath: Path, do: bool, retry: bool, move_to_subdir: bool, recursive: bool = False) -> None:
+def rename_all_in_folder(
+    basepath: Path,
+    do: bool,
+    retry: bool,
+    move_to_subdir: bool,
+    recursive: bool = False,
+    follow_links: bool = False,
+) -> None:
     valid = "valid"
 
     with MicrosoftHashes() as hashes:
-        for path, hashhex in iter_hashes(basepath, recursive):
+        for path, hashhex in iter_hashes(basepath, recursive, follow_links):
             logging.debug("<%s> [%s]", path, hashhex)
             filename = hashes.get_filename(hashhex, retry)
             if not filename:
@@ -195,8 +199,9 @@ def rename_all_in_folder(basepath: Path, do: bool, retry: bool, move_to_subdir: 
 
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument("path", type=is_dir, default=Path())
+    parser.add_argument("path", type=Path, default=Path())
     parser.add_argument("-r", "--recursive", action="store_true")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument("--move-to-subdir", action="store_true")
     parser.add_argument("--do", action="store_true")
     parser.add_argument("-v", "--verbose", action="store_true")
@@ -205,13 +210,18 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    try:
+        (is_dir if args.follow_links else is_dir_nofollow)(args.path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
+
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
     logging.getLogger("urllib3.connectionpool").setLevel(logging.INFO)
 
-    rename_all_in_folder(args.path, args.do, args.retry, args.move_to_subdir, args.recursive)
+    rename_all_in_folder(args.path, args.do, args.retry, args.move_to_subdir, args.recursive, args.follow_links)
 
 
 if __name__ == "__main__":

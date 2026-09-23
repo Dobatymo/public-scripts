@@ -1,7 +1,9 @@
 import argparse
 import sys
 from contextlib import nullcontext
+from pathlib import Path
 
+from genutility.args import is_file, is_file_or_new_nofollow
 from genutility.file import copen, copyfilelike
 
 parser = argparse.ArgumentParser()
@@ -37,14 +39,27 @@ compression.add_argument("-7", action="store_true")
 compression.add_argument("-8", action="store_true")
 compression.add_argument("-9", "--best", action="store_true", default=True)
 
-parser.add_argument("path")
+parser.add_argument("path", type=is_file)
 args = parser.parse_args()
+
+outpath = Path(f"{args.path}.bz2")
+if not args.stdout:
+    try:
+        output_exists = outpath.exists()
+        is_file_or_new_nofollow(outpath)
+    except argparse.ArgumentTypeError as e:
+        parser.error(str(e))
+
+    if output_exists and outpath.samefile(args.path):
+        parser.error("input and output paths refer to the same file")
+    if output_exists and not args.force:
+        parser.error(f"{outpath} already exists; use --force to replace it")
 
 with open(args.path, "rb") as fr:
     if args.stdout:
         context = nullcontext(sys.stdout.buffer)
     else:
-        context = copen(args.path + ".bz2", "wb" if args.force else "xb")
+        context = copen(outpath, "wb" if args.force else "xb")
 
     with context as fw:
         copyfilelike(fr, fw)

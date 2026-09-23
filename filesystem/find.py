@@ -2,7 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "ctypes-windows-sdk>=0.0.18",
-#     "genutility[args,file,filesystem,rich]>=0.0.122",
+#     "genutility[args,file,filesystem,rich]>=0.0.123",
 #     "rich",
 #     "send2trash",
 # ]
@@ -39,7 +39,18 @@ from cwinsdk.um.winnt import (
     FILE_ATTRIBUTE_UNPINNED,
 )
 from genutility._files import to_dos_path
-from genutility.args import ascii, base64, encoding_name, int_at_least, is_dir, non_negative_int, suffix_lower
+from genutility.args import (
+    ascii,
+    base64_bytes,
+    encoding_name,
+    int_at_least,
+    is_dir,
+    is_dir_nofollow,
+    is_file_or_new_nofollow,
+    new_path,
+    non_negative_int,
+    suffix_lower,
+)
 from genutility.file import is_all_byte, read_file
 from genutility.filesystem import (
     PathType,
@@ -93,19 +104,37 @@ def is_sparse_or_compressed(entry: os.DirEntry) -> bool:
     return GetCompressedFileSize(entry.path) < entry.stat().st_size
 
 
-def _files(path: PathType, include: Collection[str], exclude: Collection[str], recall: bool, progress: Progress):
+def _files(
+    path: PathType,
+    include: Collection[str],
+    exclude: Collection[str],
+    recall: bool,
+    progress: Progress,
+    follow_links: bool = False,
+):
     include = set(include) if include is not None else None
     exclude = set(exclude) if exclude is not None else None
 
     yield from p.track(
-        filter(filter_recall(recall), scandir_ext(path, include, exclude, errorfunc=scandir_error_log_warning)),
+        filter(
+            filter_recall(recall),
+            scandir_ext(
+                path,
+                include,
+                exclude,
+                follow_symlinks=follow_links,
+                errorfunc=scandir_error_log_warning,
+            ),
+        ),
         description="Processed {task.completed} files",
     )
 
 
 def bad_encoding(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             try:
                 with open(entry, encoding=args.encoding) as fr:
                     fr.read()
@@ -125,7 +154,9 @@ def line_search_regex(args: Namespace, progress: Progress) -> int:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "line"])
 
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             with open(entry.path, encoding=args.encoding, errors=args.errors) as fr:
                 for line in fr:
                     m = args.pattern.search(line)
@@ -145,7 +176,9 @@ def all_zero(args: Namespace, progress: Progress) -> int:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "filesize", "mtime"])
 
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             stat = entry.stat()
             if stat.st_size != 0:
                 with open(entry.path, "rb") as fr:
@@ -163,7 +196,9 @@ def has_filesize(args: Namespace, progress: Progress) -> int:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["path", "filesize", "mtime"])
 
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             stat = entry.stat()
             if stat.st_size == args.size:
                 num += 1
@@ -175,7 +210,9 @@ def has_filesize(args: Namespace, progress: Progress) -> int:
 
 def sparse_or_compressed(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             if entry.is_file():
                 try:
                     if is_sparse_or_compressed(entry):
@@ -198,7 +235,9 @@ def alternate_data_stream(args: Namespace, progress: Progress) -> int:
     found = 0
     failed = 0
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             stream_path = f"{entry.path}:{args.stream}"
             try:
                 os.stat(stream_path)
@@ -254,7 +293,9 @@ def file_attributes(args: Namespace, progress: Progress) -> int:
     failed = 0
 
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             try:
                 current = entry.stat(follow_symlinks=False).st_file_attributes
             except OSError as e:
@@ -358,14 +399,18 @@ def symlinks(args: Namespace, progress: Progress) -> int:
     return 0
 
 
-def _find_parent_paths(path, file_name: Optional[str] = None, dir_name: Optional[str] = None) -> Iterator[Path]:
+def _find_parent_paths(
+    path, file_name: Optional[str] = None, dir_name: Optional[str] = None, follow_links: bool = False
+) -> Iterator[Path]:
     files = file_name is not None
     dirs = dir_name is not None
 
     assert file_name or dir_name  # for mypy
     name = (file_name or dir_name).lower()  # type: ignore[union-attr]
 
-    for entry in scandir_rec(path, files=files, dirs=dirs, errorfunc=scandir_error_log_warning):
+    for entry in scandir_rec(
+        path, files=files, dirs=dirs, follow_symlinks=follow_links, errorfunc=scandir_error_log_warning
+    ):
         if entry.name.lower() != name:
             continue
 
@@ -389,7 +434,7 @@ def find_and_run(args: Namespace, progress: Progress) -> int:
 
     paths = list(
         progress.track(
-            _find_parent_paths(args.path, args.file_name, args.dir_name),
+            _find_parent_paths(args.path, args.file_name, args.dir_name, args.follow_links),
             description="Processed {task.completed} files or directories",
         )
     )
@@ -444,17 +489,28 @@ def long_paths(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt", newline="") as csvfile:
         csvwriter = csv.writer(csvfile)
         csvwriter.writerow(["length", "relpath"])
-        for entry in p.track(scandir_rec(args.path, files=True, dirs=True, rec=True, relative=True)):
+        for entry in p.track(
+            scandir_rec(
+                args.path,
+                files=True,
+                dirs=True,
+                rec=True,
+                follow_symlinks=args.follow_links,
+                relative=True,
+            )
+        ):
             if len(entry.relpath) >= args.length:
                 csvwriter.writerow([len(entry.relpath), entry.relpath])
     return 0
 
 
 def exact_content_match(args: Namespace, progress: Progress) -> int:
-    content = args.base64_content or args.ascii_content.encode("ascii")
+    content = args.base64_content if args.base64_content is not None else args.ascii_content.encode("ascii")
 
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             path = entry.path
             if entry.stat().st_size == len(content):
                 data = read_file(path, "rb")
@@ -479,7 +535,9 @@ def transformed_dups(args: Namespace, progress: Progress) -> int:
     out = defaultdict(list)
 
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
-        for entry in _files(args.path, args.include_extensions, args.exclude_extensions, args.recall, progress):
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
             key = {"path": entry.path, "name": entry.name, "size": entry.stat().st_size}[args.key]
 
             if args.sub_pattern:
@@ -607,7 +665,7 @@ find.py -i .cue line-search-regex -p "^CATALOG" .""",  # %(prog)s adds the actio
     i_group = subparser_i.add_mutually_exclusive_group(required=True)
     i_group.add_argument("--ascii-content", type=ascii, help="Find files which match this text")
     i_group.add_argument(
-        "--base64-content", type=base64, help="Find binary files which match this base64 encoded string"
+        "--base64-content", type=base64_bytes, help="Find binary files which match this base64 encoded string"
     )
     subparser_i.add_argument("--trash", action="store_true", help="Send matching files to trash")
 
@@ -698,7 +756,8 @@ Changeable attributes:
         help="Clear an attribute on matches; repeat for multiple attributes",
     )
 
-    parser.add_argument("path", type=is_dir, help="Path to scan for files or directories")
+    parser.add_argument("path", type=Path, help="Path to scan for files or directories")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument(
         "-i",
         "--include-extensions",
@@ -721,11 +780,23 @@ Changeable attributes:
         help="Download files which are currently only available online (on OneDrive for example), otherwise they are skipped.",
     )
 
-    parser.add_argument("--out", type=Path, help="Write output to file, otherwise to stdout")
-    parser.add_argument("--log", type=Path, help="Write logs to file, otherwise to stderr")
+    parser.add_argument("--out", type=new_path, help="Write output to file, otherwise to stdout")
+    parser.add_argument("--log", type=is_file_or_new_nofollow, help="Write logs to file, otherwise to stderr")
     parser.add_argument("-v", "--verbose", action="store_true")
 
     args = parser.parse_args()
+
+    try:
+        modifies_filesystem = (
+            args.func is find_and_run
+            or (args.func is empty_dirs and args.action != "print")
+            or (args.func is exact_content_match and args.trash)
+            or (args.func is alternate_data_stream and args.remove)
+            or (args.func is file_attributes and (args.set_attributes or args.clear_attributes))
+        )
+        (is_dir if args.follow_links or not modifies_filesystem else is_dir_nofollow)(args.path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
 
     handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=MarkdownHighlighter())
     FORMAT = "%(message)s"

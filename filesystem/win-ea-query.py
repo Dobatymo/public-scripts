@@ -3,7 +3,6 @@ import os
 from argparse import ArgumentParser, Namespace
 from collections import Counter
 from ctypes import WinError, byref, create_string_buffer, sizeof
-from pathlib import Path
 from struct import unpack
 from typing import List, NamedTuple
 
@@ -14,6 +13,8 @@ from cwinsdk.um.fileapi import OPEN_EXISTING, CreateFileW
 from cwinsdk.um.handleapi import CloseHandle
 from cwinsdk.um.winnt import FILE_GENERIC_READ
 from cwinsdk.um.winternl import RtlNtStatusToDosError
+from genutility.args import is_file_or_dir
+from genutility.filesystem import scandir_rec
 from genutility.rich import MarkdownHighlighter, Progress
 from rich.logging import RichHandler
 from rich.progress import Progress as RichProgress
@@ -80,25 +81,14 @@ def main(args: Namespace) -> int:
         logging.basicConfig(level=logging.INFO, format=FORMAT, handlers=[handler])
 
     if args.path.is_dir():
-        if args.recursive:
-            it = args.path.rglob("*")
-        else:
-            it = args.path.glob("*")
-
         c = Counter()
 
         with RichProgress() as progress:
             p = Progress(progress)
-            for path in p.track(it):
+            for entry in p.track(scandir_rec(args.path, rec=args.recursive, follow_symlinks=args.follow_links)):
+                path = entry.path
                 try:
-                    if not path.is_file():
-                        continue
-                except PermissionError as e:
-                    logging.warning("Failed to access <%s>: %s", path, e)
-                    continue
-
-                try:
-                    ealist = read_ea(os.fspath(path))
+                    ealist = read_ea(path)
                 except OSError as e:
                     logging.error("Failed to read EA from <%s>: %s", path, e)
                     continue
@@ -133,8 +123,11 @@ if __name__ == "__main__":
     import sys
 
     parser = ArgumentParser()
-    parser.add_argument("path", type=Path, help="Input directory to scan for Extended Attributes (EA)")
+    parser.add_argument(
+        "path", type=is_file_or_dir, help="Input file or directory to scan for Extended Attributes (EA)"
+    )
     parser.add_argument("-r", "--recursive", action="store_true", help="Scan recursively")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 

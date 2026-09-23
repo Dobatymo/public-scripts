@@ -1,3 +1,4 @@
+from pathlib import Path
 from typing import Iterable
 
 from genutility.filesystem import scandir_rec
@@ -23,16 +24,22 @@ def delete_tags_from_wma(path: str, tags: Iterable[str]) -> bool:
 
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    from argparse import ArgumentParser, ArgumentTypeError
 
-    from genutility.args import is_dir
+    from genutility.args import is_dir, is_dir_nofollow
     from genutility.ops import logical_xor
 
     parser = ArgumentParser()
-    parser.add_argument("path", type=is_dir)
+    parser.add_argument("path", type=Path)
     parser.add_argument("--tags", nargs="*")
     parser.add_argument("--napster", action="store_true")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     args = parser.parse_args()
+
+    try:
+        (is_dir if args.follow_links else is_dir_nofollow)(args.path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
 
     if not logical_xor(args.napster, args.tags):
         parser.error("Either --napster or --tags must be specified")
@@ -42,7 +49,7 @@ if __name__ == "__main__":
     else:
         tags = args.tags
 
-    for entry in scandir_rec(args.path, dirs=False, files=True):
+    for entry in scandir_rec(args.path, dirs=False, files=True, follow_symlinks=args.follow_links):
         if entry.path.endswith(".wma"):
             try:
                 if delete_tags_from_wma(entry.path, tags):

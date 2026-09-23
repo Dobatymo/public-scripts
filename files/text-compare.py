@@ -1,11 +1,12 @@
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
+    from genutility.args import is_file
     from genutility.file import equal_files
 
     parser = ArgumentParser(description="Compare two text files for equality")
-    parser.add_argument("file1")
-    parser.add_argument("file2")
+    parser.add_argument("file1", type=is_file)
+    parser.add_argument("file2", type=is_file)
     args = parser.parse_args()
 
     if equal_files(args.file1, args.file2, mode="rt"):

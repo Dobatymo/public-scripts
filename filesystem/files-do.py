@@ -6,6 +6,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
 from pathlib import Path
 
 import pandas as pd
+from genutility.args import empty_dir_nofollow, is_dir_or_new_nofollow, is_file_or_new_nofollow
 from genutility.filesystem import is_writeable, make_readonly, make_writeable
 from genutility.rich import MarkdownHighlighter, Progress, get_double_format_columns
 from rich.logging import RichHandler
@@ -25,10 +26,10 @@ def move(args: Namespace, progress: Progress) -> int:
     assert df["path"].is_unique
     assert not args.no_check_size, "Unsupported"
 
+    is_dir_or_new_nofollow(args.out_path)
     if args.out_path.exists():
         if not args.ignore_non_empty_out_path:
-            if list(args.out_path.iterdir()):
-                raise ValueError("Output path is not a empty directory")
+            empty_dir_nofollow(args.out_path)
     else:
         args.out_path.mkdir(parents=True)
 
@@ -111,14 +112,14 @@ if __name__ == "__main__":
         help="Read files from csv file. The file is expected to contain a header with keys like path, filesize, or mtime.",
     )
 
-    parser.add_argument("--log", type=Path, help="Write log to file")
+    parser.add_argument("--log", type=is_file_or_new_nofollow, help="Write log to file")
     parser.add_argument("--do", action="store_true", help="Actually perform the operation, otherwise it's a dry run")
     parser.add_argument("--verbose", action="store_true", help="Print more information")
     subparsers = parser.add_subparsers(dest="action", required=True)
 
     subparser_a = subparsers.add_parser("move", formatter_class=ArgumentDefaultsHelpFormatter, help="Move files")
     subparser_a.set_defaults(func=move)
-    subparser_a.add_argument("--out-path", type=Path, required=True, help="Output directory")
+    subparser_a.add_argument("--out-path", type=is_dir_or_new_nofollow, required=True, help="Output directory")
     subparser_a.add_argument(
         "--filename-only",
         action="store_true",

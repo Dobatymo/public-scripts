@@ -18,8 +18,8 @@ from typing import Deque, Iterable, Iterator, List, Optional, Set, Tuple, cast
 
 import cv2
 import numpy as np
-from genutility.args import int_at_least, positive_float
-from genutility.filesystem import MyDirEntry, scandir_rec
+from genutility.args import int_at_least, is_dir, positive_float
+from genutility.filesystem import MyDirEntry, entrysuffix, scandir_rec
 
 logger = logging.getLogger(__name__)
 
@@ -442,14 +442,15 @@ def scan_videos(
     sample_every: float,
     minimum_duration: float,
     analysis_width: int,
+    follow_links: bool = False,
 ) -> Tuple[int, int]:
     normalized_extensions = normalize_extensions(extensions)
     matches = 0
     errors = 0
 
-    for entry in scandir_rec(root, dirs=False, rec=recursive, relative=True):
+    for entry in scandir_rec(root, dirs=False, rec=recursive, follow_symlinks=follow_links, relative=True):
         entry = cast(MyDirEntry, entry)
-        if Path(entry.name).suffix.casefold() not in normalized_extensions:
+        if entrysuffix(entry).casefold() not in normalized_extensions:
             continue
 
         display_path = root / entry.relpath
@@ -477,8 +478,9 @@ def build_parser() -> ArgumentParser:
         formatter_class=RawDescriptionHelpFormatter,
     )
     parser.add_argument("mode", choices=sorted(MODES), help="Watermark behavior to search for; see details below")
-    parser.add_argument("path", type=Path, help="Directory to scan")
+    parser.add_argument("path", type=is_dir, help="Directory to scan")
     parser.add_argument("-r", "--recursive", action="store_true", help="Include files in subdirectories")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument(
         "--extension",
         action="append",
@@ -511,8 +513,6 @@ def build_parser() -> ArgumentParser:
 
 
 def validate_args(parser: ArgumentParser, args: Namespace) -> None:
-    if not args.path.is_dir():
-        parser.error(f"path is not a directory: {args.path}")
     if args.mode == "watermark_persistent" and args.minimum_duration is not None:
         parser.error("--minimum-duration is only valid with watermark_partial or watermark_moving")
     minimum_duration = args.minimum_duration or DEFAULT_MINIMUM_DURATION
@@ -535,6 +535,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         args.sample_every,
         minimum_duration,
         args.analysis_width,
+        args.follow_links,
     )
     return 1 if errors else 0
 

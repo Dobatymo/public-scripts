@@ -1,13 +1,13 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,file,iter]>=0.0.122",
+#     "genutility[args,file,iter]>=0.0.123",
 # ]
 # ///
 from argparse import ArgumentParser
 from pathlib import Path
 
-from genutility.args import non_negative_int
+from genutility.args import is_file, non_negative_int
 from genutility.file import iterfilelike
 from genutility.iter import iter_equal
 
@@ -16,16 +16,16 @@ def compare_content(a: Path, b: Path, size: int, a_seek: int = 0, b_seek: int = 
     with a.open("rb") as fa, b.open("rb") as fb:
         fa.seek(a_seek)
         fb.seek(b_seek)
-        return iter_equal(iterfilelike(fa, size), iterfilelike(fb, size))
+        return iter_equal(iterfilelike(fa, amount=size), iterfilelike(fb, amount=size))
 
 
 def main() -> None:
     parser = ArgumentParser()
-    parser.add_argument("file1", type=Path)
-    parser.add_argument("file2", type=Path)
+    parser.add_argument("file1", type=is_file)
+    parser.add_argument("file2", type=is_file)
     parser.add_argument("seek1", type=non_negative_int, default=0)
     parser.add_argument("seek2", type=non_negative_int, default=0)
-    parser.add_argument("maxsize", type=int)
+    parser.add_argument("maxsize", type=non_negative_int)
     args = parser.parse_args()
 
     print(compare_content(args.file1, args.file2, args.maxsize, args.seek1, args.seek2))

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[callbacks,file,filesystem,hash,iter,rich]",
+#     "genutility[args,callbacks,file,filesystem,hash,iter,rich]>=0.0.123",
 #     "rich",
 #     "typing-extensions",
 # ]
@@ -16,6 +16,7 @@ from os import fspath
 from pathlib import Path
 from typing import IO, Iterable, Iterator, List, Optional, Sequence, Type, TypedDict
 
+from genutility.args import is_file_or_dir, new_path
 from genutility.callbacks import Progress as NullProgress
 from genutility.file import StdoutFile
 from genutility.filesystem import PathType, filter_recall, scandir_error_log_warning, scandir_rec
@@ -70,13 +71,25 @@ def _metas(paths: List[str], hashcls: HashCls, dirpath: PathType) -> Iterator[Me
         yield {"hash": hashbytes, "size": size}
 
 
-def _paths(dirpath: PathType, recall: bool, progress: Optional[NullProgress] = None) -> List[str]:
+def _paths(
+    dirpath: PathType,
+    recall: bool,
+    progress: Optional[NullProgress] = None,
+    follow_links: bool = False,
+) -> List[str]:
     def sortkey(relpath: str) -> List[str]:
         return relpath.split("/")
 
     it = filter(
         filter_recall(recall),
-        scandir_rec(dirpath, files=True, dirs=False, relative=True, errorfunc=scandir_error_log_warning),
+        scandir_rec(
+            dirpath,
+            files=True,
+            dirs=False,
+            follow_symlinks=follow_links,
+            relative=True,
+            errorfunc=scandir_error_log_warning,
+        ),
     )
 
     if os.name == "nt":
@@ -163,11 +176,16 @@ class DirHasher:
 
     @classmethod
     def from_fs(
-        cls, dirpath: PathType, recall: bool, hashcls: HashCls = hashlib.sha1, progress: Optional[NullProgress] = None
+        cls,
+        dirpath: PathType,
+        recall: bool,
+        hashcls: HashCls = hashlib.sha1,
+        progress: Optional[NullProgress] = None,
+        follow_links: bool = False,
     ) -> Self:
         """Creates a DirHasher instance for a filesystem folder."""
 
-        paths = _paths(dirpath, recall, progress)
+        paths = _paths(dirpath, recall, progress, follow_links)
         metas = _metas(paths, hashcls, dirpath)
 
         return cls(paths, CachedIterable(metas), get_hash_name(hashcls), fspath(dirpath), progress)
@@ -188,7 +206,7 @@ class DirHasher:
         else:
             raise ValueError(f"Unsupported hash file: {filepath.suffix}")
 
-        with open(filepath, encoding="utf-8") as fr:
+        with filepath.open(encoding="utf-8") as fr:
             for i, line in enumerate(fr, 1):
                 m = re.match(r"^([0-9a-fA-F]+) [ \*](.*)$", line.rstrip())
                 if not m:
@@ -297,7 +315,7 @@ def main(args: Namespace) -> int:
                 writer = StdoutFile(args.out, "xt", encoding="utf-8")
 
             with writer as fw:
-                hasher = DirHasher.from_fs(args.path, args.recall, algorithm, progress)
+                hasher = DirHasher.from_fs(args.path, args.recall, algorithm, progress, args.follow_links)
                 hasher.to_stream(fw, include_total=True, fformat=args.format, include_names=not args.no_names)
 
     elif args.input == "file":
@@ -319,14 +337,16 @@ if __name__ == "__main__":
     parser = ArgumentParser(
         description="calculate hash of all files in directory combined", formatter_class=ArgumentDefaultsHelpFormatter
     )
-    parser.add_argument("path", type=Path, help="input file or directory")
+    parser.add_argument("path", type=is_file_or_dir, help="input file or directory")
     parser.add_argument(
         "--input",
         choices=("fs", "file"),
         default="fs",
         help="fs: create file with hashes from directory path. file: read file with hashes and print summary hash of hashes.",
     )
-    parser.add_argument("-o", "--out", help="Optional out file. If not specified it's printed to stdout.")
+    parser.add_argument(
+        "-o", "--out", type=new_path, help="Optional out file. If not specified it's printed to stdout."
+    )
     parser.add_argument("-p", "--progress", action="store_true", help="Show progress bar")
     parser.add_argument(
         "--format",
@@ -343,6 +363,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Download files which are currently only available online (on OneDrive for example), otherwise they are skipped.",
     )
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument("-v", "--verbose", action="store_true", help="Show debug output")
     args = parser.parse_args()
 

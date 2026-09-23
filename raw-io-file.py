@@ -74,7 +74,7 @@ def read_path(path: Path, chunk_size: int, p: Progress, *, buffering: int = -1, 
 
     ret = True
 
-    with open(path, "rb", buffering=buffering) as fp:
+    with path.open("rb", buffering=buffering) as fp:
         if filesize == 0 and is_block_device:
             filesize = get_block_device_size(fp)
             if filesize is None:
@@ -142,7 +142,11 @@ def main(args: Namespace) -> int:
                 filter(
                     filter_recall(args.recall),
                     scandir_rec(
-                        args.path, dirs=False, files=True, follow_symlinks=False, errorfunc=scandir_error_log_warning
+                        args.path,
+                        dirs=False,
+                        files=True,
+                        follow_symlinks=args.follow_links,
+                        errorfunc=scandir_error_log_warning,
                     ),
                 )
             ):
@@ -208,6 +212,7 @@ if __name__ == "__main__":
         action="store_true",
         help="Download files which are currently only available online (on OneDrive for example), otherwise they are skipped.",
     )
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument("-v", "--verbose", action="count", default=0)
     args = parser.parse_args()
 

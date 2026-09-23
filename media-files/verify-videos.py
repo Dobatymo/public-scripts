@@ -1,7 +1,7 @@
 import logging
-import os
 
 from genutility.av import BadFile, CorruptFile, iter_video
+from genutility.filesystem import entrysuffix, scandir_rec
 from genutility.iter import consume, progress
 
 if __name__ == "__main__":
@@ -13,29 +13,27 @@ if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("inpath", type=is_dir, help="Path to video files")
     parser.add_argument("-r", "--recursive", action="store_true")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     args = parser.parse_args()
 
     video_suffixes = {"." + ext for ext in fileextensions.video}
 
-    if args.recursive:
-        it = args.inpath.rglob("*")
-    else:
-        it = args.inpath.glob("*")
-
-    for inpath in it:
-        if not inpath.is_file():
-            continue
-
-        if inpath.suffix not in video_suffixes:
-            logging.debug("Skipping non-video file %s", inpath)
+    for entry in scandir_rec(
+        args.inpath,
+        dirs=False,
+        rec=args.recursive,
+        follow_symlinks=args.follow_links,
+    ):
+        if entrysuffix(entry) not in video_suffixes:
+            logging.debug("Skipping non-video file %s", entry.path)
             continue
 
         def info(i, length):
-            return str(inpath.name)[:60]  # noqa: B023
+            return entry.name[:60]  # noqa: B023
 
         try:
-            consume(progress(iter_video(os.fspath(inpath)), extra_info_callback=info))
+            consume(progress(iter_video(entry.path), extra_info_callback=info))
         except (CorruptFile, BadFile) as e:
-            logging.warning("%s is broken: %s", inpath, e)
+            logging.warning("%s is broken: %s", entry.path, e)
         except Exception:
-            logging.exception("%s is broken", inpath)
+            logging.exception("%s is broken", entry.path)

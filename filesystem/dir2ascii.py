@@ -1,5 +1,6 @@
 import os
 import os.path
+from pathlib import Path
 
 from genutility.filesystem import PathType, scandir_rec
 from unidecode import unidecode
@@ -15,14 +16,19 @@ def convert_filenames_to_ascii(path: PathType, follow_symlinks: bool = False, re
 
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    from argparse import ArgumentParser, ArgumentTypeError
 
-    from genutility.args import is_dir
+    from genutility.args import is_dir, is_dir_nofollow
 
     parser = ArgumentParser()
-    parser.add_argument("path", type=is_dir)
+    parser.add_argument("path", type=Path)
     parser.add_argument("-r", "--recursive", action="store_true")
-    parser.add_argument("-s", "--follow-symlinks", action="store_true")
+    parser.add_argument("-s", "--follow-links", "--follow-symlinks", action="store_true")
     args = parser.parse_args()
 
-    convert_filenames_to_ascii(args.path, args.follow_symlinks, args.recursive)
+    try:
+        (is_dir if args.follow_links else is_dir_nofollow)(args.path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
+
+    convert_filenames_to_ascii(args.path, args.follow_links, args.recursive)

@@ -1,13 +1,12 @@
 from argparse import ArgumentParser
-from pathlib import Path
 
-from genutility.args import non_negative_int
+from genutility.args import new_path, non_negative_int
 
 
 def main() -> None:
     parser = ArgumentParser()
     parser.add_argument("size", type=non_negative_int, help="File size in MB")
-    parser.add_argument("path", type=Path)
+    parser.add_argument("path", type=new_path)
     args = parser.parse_args()
 
     data = b"\0" * 1024 * 1024

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[filesystem,fingerprinting,hash,metrics,rich]",
+#     "genutility[args,filesystem,fingerprinting,hash,metrics,rich]>=0.0.123",
 #     "metrictrees",
 #     "metrohash",
 #     "pillow",
@@ -161,7 +161,8 @@ def write_dupegroups_dupeguru(outpath: Path, pathgroups: Iterable[Sequence[str]]
             element.tail = "\n"
 
     tree = ET.ElementTree(root)
-    tree.write(outpath, encoding="utf-8")
+    with outpath.open("xb") as fw:
+        tree.write(fw, encoding="utf-8")
 
 
 def dupegroups(
@@ -225,7 +226,7 @@ if __name__ == "__main__":
     import csv
     from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 
-    from genutility.args import is_dir
+    from genutility.args import is_dir, new_path
     from genutility.file import StdoutFile
 
     hashfuncs = {"metrohash": metrohash, "no-meta-sha1": nometahash}
@@ -236,7 +237,7 @@ if __name__ == "__main__":
         "-o",
         "--out",
         metavar="PATH",
-        type=Path,
+        type=new_path,
         help="Optional output file path. If not given it will be printed to stdout.",
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print debug information")
@@ -250,7 +251,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--hashfunc", default="metrohash", choices=hashfuncs.keys(), help="Hash function")
     parser.add_argument(
-        "--dupeguru", metavar="PATH", type=Path, help="Output the results in Dupeguru format to this path."
+        "--dupeguru", metavar="PATH", type=new_path, help="Output the results in Dupeguru format to this path."
     )
     parser.add_argument(
         "--regex",

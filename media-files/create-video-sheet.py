@@ -1,15 +1,26 @@
 import logging
 import platform
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, ArgumentTypeError
 from datetime import timedelta
 from fractions import Fraction
 from math import ceil, floor
 from os import fspath
 from pathlib import Path
-from typing import Dict, Iterator, Optional, Tuple
+from typing import Dict, Iterator, Optional, Tuple, cast
 
-from genutility.args import abs_path, existing_path, in_range, non_negative_int, positive_float, positive_int, suffix
-from genutility.filesystem import fileextensions, mdatetime
+from genutility.args import (
+    in_range,
+    is_dir,
+    is_dir_nofollow,
+    is_dir_or_new_nofollow,
+    is_file_or_dir,
+    is_file_or_new_nofollow,
+    non_negative_int,
+    positive_float,
+    positive_int,
+    suffix,
+)
+from genutility.filesystem import MyDirEntry, fileextensions, mdatetime, scandir_rec
 from genutility.image import resize_oar
 from genutility.indexing import to_2d_index
 from genutility.iter import iter_except
@@ -32,6 +43,11 @@ DEFAULT_TEMPLATE = (
 DEFAULT_PADDING = (5, 5)
 
 logger = logging.getLogger(__name__)
+
+
+def iterfiles(inpath: Path, recursive: bool, follow_links: bool) -> Iterator[MyDirEntry]:
+    for entry in scandir_rec(inpath, dirs=False, rec=recursive, follow_symlinks=follow_links, relative=True):
+        yield cast(MyDirEntry, entry)
 
 
 def make_seconds(BackendCls):
@@ -297,13 +313,14 @@ def main():
         description="Create video sheet / grid of thumbnails from video file.",
         formatter_class=ArgumentDefaultsHelpFormatter,
     )
-    parser.add_argument("inpath", type=existing_path, help="Path to input video file")
-    parser.add_argument("outpath", nargs="?", type=abs_path, help="Path to output image file")
+    parser.add_argument("inpath", type=is_file_or_dir, help="Path to input video file or directory")
+    parser.add_argument("outpath", nargs="?", type=Path, help="Path to output image file")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable debugging output")
     parser.add_argument("-w", "--overwrite", action="store_true", help="Overwrite existing files")
     parser.add_argument(
         "-r", "--recursive", action="store_true", help="Recurse into subfolders if input is a directory."
     )
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument(
         "-f",
         "--format",
@@ -357,6 +374,15 @@ def main():
     )
     args = parser.parse_args()
 
+    try:
+        input_is_file = args.inpath.is_file()
+        if not input_is_file:
+            (is_dir if args.follow_links or args.outpath is not None else is_dir_nofollow)(args.inpath)
+            if args.outpath is not None:
+                is_dir_or_new_nofollow(args.outpath)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
+
     argsdict = {
         "header": args.header,
         "thumbsize": args.thumbsize,
@@ -389,31 +415,38 @@ def main():
         rows = None
         seconds = args.seconds
 
-    if args.inpath.is_file():
+    if input_is_file:
         if args.outpath is None:
             outpath = args.inpath.with_suffix(args.format)
         else:
-            assert not args.outpath.is_dir()
             outpath = args.outpath
+
+        try:
+            output_exists = outpath.exists()
+            is_file_or_new_nofollow(outpath)
+        except ArgumentTypeError as e:
+            parser.error(str(e))
+
+        if output_exists and outpath.samefile(args.inpath):
+            parser.error("input and output paths refer to the same file")
+        if output_exists and not args.overwrite:
+            parser.error(f"{outpath} already exists; use --overwrite to replace it")
 
         with RichProgress() as p:
             progress = Progress(p)
             create_sheet_cli(args.inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry)
 
-    elif args.inpath.is_dir():
+    else:
         video_suffixes = {"." + ext for ext in fileextensions.video}
 
-        if args.recursive:
-            it = args.inpath.rglob("*")
-        else:
-            it = sorted(args.inpath.glob("*"))
+        it = iterfiles(args.inpath, args.recursive, args.follow_links)
+        if not args.recursive:
+            it = iter(sorted(it, key=lambda entry: entry.path))
 
         with RichProgress() as p:
             progress = Progress(p)
-            for inpath in progress.track(it, description="Reading files"):
-                if not inpath.is_file():
-                    continue
-
+            for entry in progress.track(it, description="Reading files"):
+                inpath = Path(entry.path)
                 if inpath.suffix.lower() not in video_suffixes:
                     logger.debug("Skipping non-video file `%s`", inpath)
                     continue
@@ -421,14 +454,23 @@ def main():
                 if args.outpath is None:
                     outpath = inpath.with_suffix(args.format)
                 else:
-                    outpath = args.outpath / inpath.parent.relative_to(args.inpath)
-                    outpath.mkdir(parents=True, exist_ok=True)
-                    outpath = outpath / Path(inpath.name).with_suffix(args.format)
+                    outpath = (args.outpath / entry.relpath).with_suffix(args.format)
+                    outpath.parent.mkdir(parents=True, exist_ok=True)
 
-                if args.overwrite or not outpath.exists():
+                try:
+                    output_exists = outpath.exists()
+                    is_file_or_new_nofollow(outpath)
+                except ArgumentTypeError as e:
+                    logger.warning("Skipping invalid output path `%s`: %s", outpath, e)
+                    continue
+
+                if output_exists and outpath.samefile(inpath):
+                    logger.warning("Skipping output path which refers to its input: `%s`", outpath)
+                    continue
+
+                if args.overwrite or not output_exists:
                     logger.info("Processing `%s`", inpath)
 
-                    # filerelpath = inpath.relative_to(args.inpath)
                     try:
                         create_sheet_cli(
                             inpath, outpath, cols, rows, seconds, argsdict, progress, args.backend, args.dry
@@ -439,9 +481,6 @@ def main():
                         logger.exception("Skipping `%s`", inpath)
                 else:
                     logger.info("Skipping existing file `%s`", inpath)
-
-    else:
-        parser.error("inpath is neither file nor directory")
 
 
 if __name__ == "__main__":

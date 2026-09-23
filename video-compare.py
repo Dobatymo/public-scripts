@@ -6,7 +6,7 @@
 #     "tqdm",
 #     "numpy",
 #     "more-itertools",
-#     "genutility[args,json,tqdm,videofile]>=0.0.122",
+#     "genutility[args,json,tqdm,videofile]>=0.0.123",
 #     "opencv-python",
 # ]
 # ///
@@ -16,7 +16,7 @@ import json
 import logging
 import os
 import sys
-from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, Namespace
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser, ArgumentTypeError, Namespace
 from collections import defaultdict
 from concurrent.futures import Future, ProcessPoolExecutor
 from functools import partial
@@ -30,7 +30,15 @@ from typing import Any, Collection, Dict, Iterable, Iterator, List, Optional, Se
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-from genutility.args import finite_float, non_negative_int, positive_float, positive_int
+from genutility.args import (
+    finite_float,
+    is_file,
+    is_file_or_dir,
+    is_file_or_new_nofollow,
+    non_negative_int,
+    positive_float,
+    positive_int,
+)
 from genutility.json import json_lines
 from genutility.numpy import fill_gaps, remove_spikes
 from genutility.tqdm import Progress, TqdmMultiprocessing, TqdmProcess
@@ -42,6 +50,15 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 MAX_FRAME_TIME_DIFFERENCE_LOGS = 3
+
+
+def validate_output_file(path: Path, overwrite: bool, input_paths: Iterable[Path] = ()) -> None:
+    output_exists = path.exists()
+    is_file_or_new_nofollow(path)
+    if output_exists and any(input_path.exists() and path.samefile(input_path) for input_path in input_paths):
+        raise ArgumentTypeError(f"output path refers to an input file: {path}")
+    if output_exists and not overwrite:
+        raise ArgumentTypeError(f"{path} already exists; use --overwrite to replace it")
 
 
 def sum_abs_diff(image1: np.ndarray, image2: np.ndarray) -> int:
@@ -288,9 +305,10 @@ def process_paths(
     skip2: int = 0,
     ignore_frame_time_difference: bool = False,
     processing_backend: Optional[str] = None,
+    overwrite: bool = False,
 ) -> None:
     processing_backend = resolve_processing_backend(metric, processing_backend)
-    with json_lines.from_path(out, "wt") as fw:
+    with json_lines.from_path(out, "wt" if overwrite else "xt") as fw:
         if not pairs:
             return
 
@@ -395,6 +413,12 @@ def action_compare(args: Namespace) -> int:
 
         pairs.append((p1, p2))
 
+    try:
+        validate_output_file(args.out, args.overwrite, chain.from_iterable(pairs))
+    except ArgumentTypeError as e:
+        logger.error("Cannot write comparison output: %s", e)
+        return 2
+
     process_paths(
         pairs,
         args.metric,
@@ -409,6 +433,7 @@ def action_compare(args: Namespace) -> int:
         args.skip2,
         args.ignore_frame_time_difference,
         args.processing_backend,
+        overwrite=args.overwrite,
     )
     return 0
 
@@ -512,6 +537,12 @@ def action_analyze(args: Namespace) -> int:
                 print(title)
 
                 if args.export:
+                    try:
+                        validate_output_file(args.export, args.overwrite, (path1, path2))
+                    except ArgumentTypeError as e:
+                        logger.error("Cannot export differences: %s", e)
+                        return 2
+
                     if args.threshold is None:
                         threshold = scores.mean()
                     else:
@@ -754,11 +785,11 @@ def main() -> None:
 
     parser_a = subparsers.add_parser("compare", help="Calculate video quality metric")
     parser_a.set_defaults(func=action_compare)
-    parser_a.add_argument("path1", type=Path, help="First input directory or file")
-    parser_a.add_argument("path2", type=Path, help="Second input directory or file")
+    parser_a.add_argument("path1", type=is_file_or_dir, help="First input directory or file")
+    parser_a.add_argument("path2", type=is_file_or_dir, help="Second input directory or file")
     parser_a.add_argument(
         "--path-pairs",
-        type=Path,
+        type=is_file,
         nargs="+",
         default=[],
         help="Additional individual files to compare. The first file will be compared to the second, the third to the forth, and so on.",
@@ -803,11 +834,12 @@ def main() -> None:
         choices=processing_backends,
         help="Metric processing backend (defaults to skimage for SSIM and cv2 otherwise)",
     )
-    parser_a.add_argument("--out", type=Path, required=True, help="JSON Lines output filename")
+    parser_a.add_argument("--out", type=is_file_or_new_nofollow, required=True, help="JSON Lines output filename")
+    parser_a.add_argument("--overwrite", action="store_true", help="Overwrite the output file")
 
     parser_b = subparsers.add_parser("analyze", help="Show video quality metric")
     parser_b.set_defaults(func=action_analyze)
-    parser_b.add_argument("path", type=Path, help="JSON Lines input file")
+    parser_b.add_argument("path", type=is_file, help="JSON Lines input file")
     parser_b.add_argument("-p", "--plot", action="store_true", help="Display plot")
     parser_b.add_argument(
         "--x-axis",
@@ -818,8 +850,11 @@ def main() -> None:
     parser_b.add_argument("--threshold", type=finite_float, help="Metric threshold to use to export video differences")
     parser_b.add_argument("--fps", type=positive_float, help="FPS of exported video. Manually read from source file.")
     parser_b.add_argument(
-        "--export", type=Path, help="When given, a video showing the different frames is exported to this path"
+        "--export",
+        type=is_file_or_new_nofollow,
+        help="When given, a video showing the different frames is exported to this path",
     )
+    parser_b.add_argument("--overwrite", action="store_true", help="Overwrite the exported video")
     parser_b.add_argument(
         "--diff",
         default=DEFAULT_VISUAL_DIFF,
@@ -832,8 +867,8 @@ def main() -> None:
         help="Find the offset in frames between two video files. Only works if there is a constant offset throughout",
     )
     parser_c.set_defaults(func=action_find_lag)
-    parser_c.add_argument("path1", type=Path, help="First input file")
-    parser_c.add_argument("path2", type=Path, help="Second input file")
+    parser_c.add_argument("path1", type=is_file, help="First input file")
+    parser_c.add_argument("path2", type=is_file, help="Second input file")
     parser_c.add_argument(
         "--size",
         type=positive_int,
@@ -850,6 +885,17 @@ def main() -> None:
     parser_c.add_argument("--skip-nth-2", metavar="N", default=0, type=non_negative_int, help="Skip every n-th frame")
 
     args = parser.parse_args()
+
+    try:
+        if args.action == "compare":
+            validate_output_file(args.out, args.overwrite, (args.path1, args.path2, *args.path_pairs))
+        elif args.action == "analyze":
+            if args.export is not None:
+                validate_output_file(args.export, args.overwrite, (args.path,))
+            elif args.overwrite:
+                parser.error("--overwrite requires --export")
+    except ArgumentTypeError as e:
+        parser.error(str(e))
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)

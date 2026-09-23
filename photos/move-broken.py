@@ -2,7 +2,7 @@ import logging
 from argparse import ArgumentParser
 from pathlib import Path
 
-from genutility.args import is_dir
+from genutility.args import is_dir_nofollow
 from genutility.filesystem import scandir_ext
 from genutility.rich import Progress
 from PIL import Image, UnidentifiedImageError
@@ -15,7 +15,7 @@ register_avif_opener()
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("path", type=is_dir)
+    parser.add_argument("path", type=is_dir_nofollow)
     parser.add_argument("--subdir", default="broken")
     args = parser.parse_args()
 

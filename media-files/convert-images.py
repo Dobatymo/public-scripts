@@ -3,17 +3,25 @@ import os
 from pathlib import Path
 from shutil import copystat
 
+from genutility.filesystem import scandir_rec
 from PIL import Image, UnidentifiedImageError
 
 logger = logging.getLogger(__name__)
 
 
-def convert(inpath: Path, bitmap: bool = True, tiff: bool = True, remove_originals: bool = False) -> None:
+def convert(
+    inpath: Path,
+    bitmap: bool = True,
+    tiff: bool = True,
+    remove_originals: bool = False,
+    follow_links: bool = False,
+) -> None:
     """Recursively within `inpath`, converts bitmap files to PNG
     and uncompressed tiff files to losslessly compressed ones.
     """
 
-    for path in inpath.rglob("*"):
+    for entry in scandir_rec(inpath, dirs=False, follow_symlinks=follow_links):
+        path = Path(entry.path)
         if bitmap and path.suffix in {".bmp"}:
             pngfile = path.with_suffix(".png")
             if not pngfile.exists():
@@ -70,24 +78,36 @@ def convert(inpath: Path, bitmap: bool = True, tiff: bool = True, remove_origina
 
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    from argparse import ArgumentParser, ArgumentTypeError
 
-    from genutility.args import is_dir
+    from genutility.args import is_dir, is_dir_nofollow
 
     parser = ArgumentParser()
-    parser.add_argument("path", type=is_dir, help="Path to scan for image files")
+    parser.add_argument("path", type=Path, help="Path to scan for image files")
     parser.add_argument("--bitmaps", action="store_true", help="Convert bmp images")
     parser.add_argument("--tiffs", action="store_true", help="Convert tiff images")
     parser.add_argument(
         "--remove-originals", action="store_true", help="Remove the original image files after they have been converted"
     )
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument("-v", "--verbose", action="store_true", help="Display debug messages")
     args = parser.parse_args()
 
     if not any([args.bitmaps, args.tiffs]):
         parser.error("Must specify at least one file format to convert")
 
+    try:
+        (is_dir if args.follow_links else is_dir_nofollow)(args.path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
+
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
 
-    convert(args.path, bitmap=args.bitmaps, tiff=args.tiffs, remove_originals=args.remove_originals)
+    convert(
+        args.path,
+        bitmap=args.bitmaps,
+        tiff=args.tiffs,
+        remove_originals=args.remove_originals,
+        follow_links=args.follow_links,
+    )

@@ -18,11 +18,12 @@ classifiers = [
 ]
 dependencies = [
   "bencode-py>=2",
+  "boto3",
   "ctypes-windows-sdk>=0.0.18",
   "enzyme>=0.5.2",
   """\
   genutility[args,fileformats,filesystem,fingerprinting,hash,image,mediainfo,metrics,pillow,rich,torrent,tqdm,videofile\
-  ]>=0.0.122\
+  ]>=0.0.123\
   """,
   "langcodes>=3.3,<3.5",
   "language-data>=1.1,<1.2; python_version<'3.9'",
@@ -46,6 +47,11 @@ dependencies = [
   "send2trash>=1",
   "tqdm>=4",
   "typing-extensions>=4.6"
+]
+
+[dependency-groups]
+dev = [
+  "mypy>=1.14.1",
 ]
 
 [tool.ruff]

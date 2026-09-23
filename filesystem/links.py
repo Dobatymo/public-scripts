@@ -2,7 +2,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,rich]>=0.0.122",
+#     "genutility[args,rich]>=0.0.123",
 #     "rich",
 # ]
 # ///
@@ -21,7 +21,7 @@ from argparse import (
 from pathlib import Path
 from typing import Dict, Iterator, List, NamedTuple, Optional, Set, Tuple
 
-from genutility.args import positive_int
+from genutility.args import is_dir_or_new_nofollow, positive_int
 from genutility.rich import Progress
 from rich.progress import Progress as RichProgress
 
@@ -515,7 +515,7 @@ def build_parser() -> ArgumentParser:
     )
     destination.add_argument(
         "--output",
-        type=Path,
+        type=is_dir_or_new_nofollow,
         metavar="OUTPUT_ROOT",
         help="Create files below this root and leave the source symlinks unchanged",
     )

@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.9"
 # dependencies = [
-#     "genutility[args,rich]>=0.0.122",
+#     "genutility[args,rich]>=0.0.123",
 #     "libtorrent",
 #     "rich",
 #     "libtorrent-windows-dll",
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Callable, Iterable, Optional
 
 import libtorrent
-from genutility.args import existing_path, future_file, multiple_of, positive_int
+from genutility.args import is_file_or_dir, multiple_of, new_path, positive_int
 from genutility.rich import Progress
 from rich.progress import Progress as RichProgress
 
@@ -65,7 +65,7 @@ def create_torrent(
 
     if pieces:
         piece_size = 2 ** min(max(round(log2(fs.total_size() / pieces)), min_piece_exp), max_piece_exp)
-        logger.info("piece_size", piece_size)
+        logger.info("piece_size: %s", piece_size)
 
     t = libtorrent.create_torrent(fs, piece_size, flags)
 
@@ -88,8 +88,8 @@ def create_torrent(
 
 def main():
     parser = ArgumentParser(description="Create torrent file")
-    parser.add_argument("inpath", type=existing_path, help="Path to files")
-    parser.add_argument("outpath", type=future_file, help="Path to put torrent file")
+    parser.add_argument("inpath", type=is_file_or_dir, help="Path to file or directory")
+    parser.add_argument("outpath", type=new_path, help="Path to put torrent file")
     parser.add_argument("--trackers", metavar="TRACKER", nargs="*", default=[], help="List of tracker URLs")
     parser.add_argument("--silent", action="store_true", help="Don't show progress bar")
     parser.add_argument("--private", action="store_true", help="Create private torrent")
@@ -115,6 +115,8 @@ def main():
 
     if args.private and not args.trackers:
         parser.error("Private torrents must have trackers")
+
+    args.outpath.parent.mkdir(parents=True, exist_ok=True)
 
     def predicate(x):
         print("Added", x)
@@ -146,7 +148,7 @@ def main():
                 progress=progressfunc,
             )
 
-    with open(args.outpath, "wb") as fw:
+    with args.outpath.open("wb") as fw:
         fw.write(data)
 
 

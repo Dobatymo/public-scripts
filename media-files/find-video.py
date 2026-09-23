@@ -18,8 +18,8 @@ from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple, cast
 
 import enzyme
 import langcodes
-from genutility.args import non_negative_float
-from genutility.filesystem import MyDirEntry, scandir_rec
+from genutility.args import is_dir, non_negative_float
+from genutility.filesystem import MyDirEntry, entrysuffix, scandir_rec
 from genutility.mediainfo import MediaInfoHelper
 
 logger = logging.getLogger(__name__)
@@ -330,14 +330,15 @@ def find_videos(
     check: VideoCheck,
     extensions: Optional[Iterable[str]] = None,
     recursive: bool = False,
+    follow_links: bool = False,
 ) -> Tuple[int, int]:
     normalized_extensions = normalize_extensions(VIDEO_EXTENSIONS if extensions is None else extensions)
     matches = 0
     errors = 0
 
-    for entry in scandir_rec(path, dirs=False, rec=recursive, relative=True):
+    for entry in scandir_rec(path, dirs=False, rec=recursive, follow_symlinks=follow_links, relative=True):
         entry = cast(MyDirEntry, entry)
-        if Path(entry.name).suffix.casefold() not in normalized_extensions:
+        if entrysuffix(entry).casefold() not in normalized_extensions:
             continue
 
         display_path = path / entry.relpath
@@ -364,13 +365,14 @@ def build_parser() -> ArgumentParser:
         formatter_class=RawDescriptionHelpFormatter,
     )
     parser.add_argument("mode", choices=sorted(MODES), help="Condition to search for; see mode descriptions below")
-    parser.add_argument("path", type=Path, help="Directory to scan")
+    parser.add_argument("path", type=is_dir, help="Directory to scan")
     parser.add_argument(
         "-r",
         "--recursive",
         action="store_true",
         help="Include files in subdirectories; applies to every mode",
     )
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     parser.add_argument(
         "--extension",
         action="append",
@@ -397,8 +399,6 @@ def build_parser() -> ArgumentParser:
 
 
 def validate_args(parser: ArgumentParser, args: Namespace) -> None:
-    if not args.path.is_dir():
-        parser.error(f"path is not a directory: {args.path}")
     if args.mode == "audio_language" and not args.languages:
         parser.error("audio_language requires at least one --language")
     if args.mode != "audio_language" and args.languages:
@@ -428,6 +428,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         check,
         args.extensions or default_extensions,
         recursive=args.recursive,
+        follow_links=args.follow_links,
     )
     return 1 if errors else 0
 

@@ -1,16 +1,15 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,file,json,torrent]>=0.0.122",
+#     "genutility[args,file,json,torrent]>=0.0.123",
 # ]
 # ///
 import json
 import sys
 from argparse import ArgumentParser
-from pathlib import Path
 from pprint import pprint
 
-from genutility.args import is_file, positive_int
+from genutility.args import is_file, new_path, positive_int
 from genutility.file import PathOrTextIO
 from genutility.json import BuiltinEncoder
 from genutility.torrent import read_torrent, torrent_info_hash
@@ -31,7 +30,7 @@ def main():
     parser.add_argument("--width", type=positive_int, default=80, help="Terminal width")
     parser.add_argument("--compact", action="store_true", help="Compact output")
     parser.add_argument("--json", action="store_true", help="Use JSON format instead of pretty-print.")
-    parser.add_argument("--out", type=Path, help="Out path. If not specified, output will be printed to screen.")
+    parser.add_argument("--out", type=new_path, help="Out path. If not specified, output will be printed to screen.")
     parser.add_argument(
         "--infohash", action="store_true", help="Calculate torrent info hash instead of showing torrent contents."
     )
@@ -43,12 +42,12 @@ def main():
         if args.compact or args.json:
             parser.error("Cannot use --compact or --json with --infohash")
 
-        with PathOrTextIO(args.out or sys.stdout, "wt") as fw:
+        with PathOrTextIO(args.out or sys.stdout, "xt") as fw:
             infohash = torrent_info_hash(td[b"info"])
             fw.write(infohash)
 
     else:
-        with PathOrTextIO(args.out or sys.stdout, "wt") as fw:
+        with PathOrTextIO(args.out or sys.stdout, "xt") as fw:
             if args.json:
                 return json.dump(td, fw, ensure_ascii=False, indent="\t", sort_keys=False, cls=BuiltinEncoder)
 

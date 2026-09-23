@@ -11,12 +11,14 @@ def print_links(path) -> None:
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
+    from genutility.args import is_dir
+
     logging.basicConfig(level=logging.DEBUG)
 
     DEFAULT_IGNORE = [".!ut", ".!qB"]
 
     parser = ArgumentParser()
-    parser.add_argument("path", help="Input path to search recursively.")
+    parser.add_argument("path", type=is_dir, help="Input path to search recursively.")
     args = parser.parse_args()
 
     print("Symlinks or junctions")

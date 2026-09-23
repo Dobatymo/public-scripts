@@ -12,8 +12,10 @@ def file_entropy(filename):
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
+    from genutility.args import is_file
+
     parser = ArgumentParser()
-    parser.add_argument("path")
+    parser.add_argument("path", type=is_file)
     args = parser.parse_args()
 
     print(file_entropy(args.path))

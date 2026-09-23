@@ -1,23 +1,26 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,exceptions]",
+#     "genutility[args,exceptions,filesystem]>=0.0.123",
 # ]
 # ///
 import errno
 import logging
 import os
-from argparse import ArgumentParser
+from argparse import ArgumentParser, ArgumentTypeError
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Optional, cast
 
-from genutility.args import is_dir
+from genutility.args import is_dir, is_dir_nofollow
 from genutility.exceptions import assert_choice
+from genutility.filesystem import MyDirEntry, scandir_rec
+
+logger = logging.getLogger(__name__)
 
 
-def remove_empty_error_log(path: str, e: Exception) -> None:
+def remove_empty_error_log(path: str, e: OSError) -> None:
     if e.errno != errno.ENOTEMPTY:
-        logging.warning("Failed to remove %s (%s)", path, e)
+        logger.warning("Failed to remove %s (%s)", path, e)
 
 
 def remove_empty_dirs(path: str, ignore_errors: bool = False, onerror: Optional[Callable] = None) -> None:
@@ -43,22 +46,24 @@ def move_rename(src: Path, dst: Path):
 MODES = ("fail", "no_move", "overwrite", "rename")
 
 
-def merge(src: Path, dst: Path, mode: str = "no_move", do: bool = False) -> None:
+def merge(src: Path, dst: Path, mode: str = "no_move", do: bool = False, follow_links: bool = False) -> None:
     assert_choice("mode", mode, MODES)
 
     if not src.is_dir() or not dst.is_dir():
         raise ValueError("src and dst must be directories")
 
-    for path in src.rglob("*"):
-        if path.is_dir():
-            relpath = path.relative_to(src)
+    for entry in scandir_rec(src, files=True, dirs=True, follow_symlinks=follow_links, relative=True):
+        entry = cast(MyDirEntry, entry)
+        path = Path(entry.path)
+        relpath = Path(entry.relpath)
+
+        if entry.is_dir():
             if do:
                 (dst / relpath).mkdir(parents=True, exist_ok=True)
             else:
                 if not (dst / relpath).exists():
                     print("mkdir", dst / relpath)
-        elif path.is_file():
-            relpath = path.relative_to(src)
+        elif entry.is_file():
             if do:
                 (dst / relpath.parent).mkdir(parents=True, exist_ok=True)
             else:
@@ -88,13 +93,14 @@ def merge(src: Path, dst: Path, mode: str = "no_move", do: bool = False) -> None
         else:
             raise RuntimeError(f"Unhandled file: {path}")
 
-    remove_empty_dirs(os.fspath(src), onerror=remove_empty_error_log)
+    if do:
+        remove_empty_dirs(os.fspath(src), onerror=remove_empty_error_log)
 
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument("src", type=is_dir, help="Source directory")
-    parser.add_argument("dst", type=is_dir, help="Target directory")
+    parser.add_argument("src", type=Path, help="Source directory")
+    parser.add_argument("dst", type=is_dir_nofollow, help="Target directory")
     parser.add_argument(
         "--mode",
         choices=MODES,
@@ -102,9 +108,15 @@ def main():
         help="Specifies the handling of files in src which already exist in dst.",
     )
     parser.add_argument("--do", action="store_true", help="Actually perform actions")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     args = parser.parse_args()
 
-    merge(args.src, args.dst, args.mode, args.do)
+    try:
+        (is_dir if args.follow_links else is_dir_nofollow)(args.src)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
+
+    merge(args.src, args.dst, args.mode, args.do, args.follow_links)
 
 
 if __name__ == "__main__":

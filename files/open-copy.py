@@ -4,11 +4,12 @@ import subprocess
 import tempfile
 from argparse import ArgumentParser
 
+from genutility.args import is_file
 from genutility.stdio import errorquit, waitquit
 
 if __name__ == "__main__":
     parser = ArgumentParser()
-    parser.add_argument("path")
+    parser.add_argument("path", type=is_file)
     args = parser.parse_args()
 
     try:

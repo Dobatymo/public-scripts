@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[torrent]",
+#     "genutility[args,filesystem,torrent]>=0.0.123",
 # ]
 # ///
 import logging
@@ -11,16 +11,18 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from genutility.exceptions import NotFound
+from genutility.filesystem import EntryType, PathType, scandir_ext, scandir_rec
 from genutility.torrent import read_torrent, read_torrent_info_dict, torrent_info_hash, write_torrent
 
 logger = logging.getLogger(__name__)
+DEFAULT_BT_BACKUP = Path(os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup"))
 
 
 class QBittorrentMeta:
     __slots__ = ("btpath", "map")
 
     def __init__(self, path: Optional[Path] = None) -> None:
-        self.btpath = path or Path(os.path.expandvars("%LOCALAPPDATA%/qBittorrent/BT_backup"))
+        self.btpath = path or DEFAULT_BT_BACKUP
         if not self.btpath.exists():
             raise FileNotFoundError(f"QBittorrent torrent directory {self.btpath} doesn't exist")
         if not self.btpath.is_dir():
@@ -60,7 +62,7 @@ class QBittorrentMeta:
         else:
             return self.set_fastresume_path(info_hash, fspath(path.parent))
 
-    def path_to_info_hash(self, path: Path) -> str:
+    def path_to_info_hash(self, path: EntryType) -> str:
         name = path.name
         size = path.stat().st_size
 
@@ -126,8 +128,9 @@ class QBittorrentMeta:
         return ret
 
 
-def replace_directory(dirpath: Path, from_s: str, to_s: str) -> None:
-    for filepath in dirpath.glob("*.fastresume"):
+def replace_directory(dirpath: PathType, from_s: str, to_s: str, follow_links: bool = False) -> None:
+    for entry in scandir_ext(dirpath, include={".fastresume"}, rec=False, follow_symlinks=follow_links):
+        filepath = Path(entry.path)
         bb = read_torrent(filepath)
 
         try:
@@ -144,21 +147,24 @@ def replace_directory(dirpath: Path, from_s: str, to_s: str) -> None:
         write_torrent(bb, filepath)
 
 
-def match_directory(path: Path, move_files: bool = False, recursive: bool = True) -> None:
+def match_directory(
+    path: PathType,
+    move_files: bool = False,
+    recursive: bool = True,
+    follow_links: bool = False,
+    bt_backup: Optional[Path] = None,
+) -> None:
     """Scans directory `path` for files known to QBittorrent and either adjusts the
     fastresume files to have the correct path, or moves the files to the path specified
     in the fastresume files.
     """
 
-    qb = QBittorrentMeta()
-
-    if recursive:
-        it = path.rglob("*")
-    else:
-        it = path.glob("*")
+    qb = QBittorrentMeta(bt_backup)
+    it = scandir_rec(path, rec=recursive, follow_symlinks=follow_links)
 
     if move_files:
-        for p in it:
+        for entry in it:
+            p = Path(entry.path)
             try:
                 if qb.move_single_file(p):
                     logger.info("Moved file %s", p)
@@ -167,7 +173,8 @@ def match_directory(path: Path, move_files: bool = False, recursive: bool = True
             except NotFound:
                 logger.debug("Did not find torrent file for %s", p)
     else:
-        for p in it:
+        for entry in it:
+            p = Path(entry.path)
             try:
                 if qb.single_file_moved(p):
                     logger.info("Adjusted torrent path for %s", p)
@@ -178,14 +185,14 @@ def match_directory(path: Path, move_files: bool = False, recursive: bool = True
 
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    from argparse import ArgumentParser, ArgumentTypeError
 
-    from genutility.args import is_dir, is_file
+    from genutility.args import is_dir, is_dir_nofollow, is_file_nofollow, new_path
 
     parser = ArgumentParser(
         description="Change save locations for files in QBittorrent appdata.\nWarning: Close QBittorrent before running this script."
     )
-    parser.add_argument("--BT_backup", metavar="path", type=is_dir)
+    parser.add_argument("--BT_backup", metavar="path", type=Path, default=DEFAULT_BT_BACKUP)
     parser.add_argument("--verbose", action="store_true")
     subparsers = parser.add_subparsers(dest="command")
     subparsers.required = True
@@ -195,22 +202,32 @@ if __name__ == "__main__":
     )
     parser_a.add_argument("old", help="Path substring to be replaced. For example 'C:'.")
     parser_a.add_argument("new", help="New path substring. For example 'D:'.")
+    parser_a.add_argument("--follow-links", action="store_true", help="Follow file links during scanning")
 
     parser_b = subparsers.add_parser(
         "move", help="Moves a single file on the filesystem while also adjusting the save-path in QBittorrent"
     )
-    parser_b.add_argument("src", type=is_file, help="File source path")
-    parser_b.add_argument("dst", type=Path, help="File destination path")
+    parser_b.add_argument("src", type=is_file_nofollow, help="File source path")
+    parser_b.add_argument("dst", type=new_path, help="File destination path")
 
     parser_c = subparsers.add_parser(
         "scan",
         help="Scans a directory for files which belong to torrents known to QBittorrent and either adjusts the save-paths in QBittorrent or moves the files to the save-path location.",
     )
-    parser_c.add_argument("path", type=is_dir, help="Path to scan for files from torrents")
+    parser_c.add_argument("path", type=Path, help="Path to scan for files from torrents")
     parser_c.add_argument("--move", action="store_true", help="Move files instead of adjusting torrent paths")
     parser_c.add_argument("--recursive", action="store_true", help="Scan recursively")
+    parser_c.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
 
     args = parser.parse_args()
+
+    try:
+        follow_links = getattr(args, "follow_links", False)
+        (is_dir if follow_links else is_dir_nofollow)(args.BT_backup)
+        if args.command == "scan":
+            (is_dir if follow_links else is_dir_nofollow)(args.path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
 
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
@@ -218,11 +235,11 @@ if __name__ == "__main__":
         logging.basicConfig(level=logging.INFO)
 
     if args.command == "replace":
-        replace_directory(args.path, args.old, args.new)
+        replace_directory(args.BT_backup, args.old, args.new, args.follow_links)
     elif args.command == "move":
-        qb = QBittorrentMeta()
+        qb = QBittorrentMeta(args.BT_backup)
         qb.move_single_file_to(args.src, args.dst)
     elif args.command == "scan":
-        match_directory(args.path, args.move, args.recursive)
+        match_directory(args.path, args.move, args.recursive, args.follow_links, args.BT_backup)
     else:
         parser.error("Invalid command")

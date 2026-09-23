@@ -1,8 +1,8 @@
 import logging
-from os import fspath
 from pathlib import Path
 from typing import Dict, Optional
 
+from genutility.filesystem import scandir_ext
 from mutagen import FileType
 from mutagen.flac import FLAC
 
@@ -28,26 +28,32 @@ def modify_header(filetags: FileType, mapping: dict) -> bool:
     return modified
 
 
-def delete_flac_tags(directory: Path, mapping: Dict[str, Optional[str]]) -> None:
-    for path in Path(directory).rglob("*.flac"):
-        if path.is_file():
-            try:
-                filetags = FLAC(fspath(path))
-                if modify_header(filetags, mapping):
-                    filetags.save()
-            except Exception:
-                logging.exception("Removing tags from %s failed.", path)
+def delete_flac_tags(directory: Path, mapping: Dict[str, Optional[str]], follow_links: bool = False) -> None:
+    for entry in scandir_ext(directory, include={".flac"}, follow_symlinks=follow_links):
+        try:
+            filetags = FLAC(entry.path)
+            if modify_header(filetags, mapping):
+                filetags.save()
+        except Exception:
+            logging.exception("Removing tags from %s failed.", entry.path)
 
 
 if __name__ == "__main__":
-    from argparse import ArgumentParser
+    from argparse import ArgumentParser, ArgumentTypeError
 
-    from genutility.args import is_dir
+    from genutility.args import is_dir, is_dir_nofollow
 
     parser = ArgumentParser()
-    parser.add_argument("paths", metavar="PATH", nargs="+", type=is_dir)
+    parser.add_argument("paths", metavar="PATH", nargs="+", type=Path)
     parser.add_argument("--key-value", action="append", nargs="+", metavar=("KEY", "VALUE=None"))
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     args = parser.parse_args()
+
+    try:
+        for path in args.paths:
+            (is_dir if args.follow_links else is_dir_nofollow)(path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
 
     if not args.key_value:
         parser.error("--key-value not specified")
@@ -64,4 +70,4 @@ if __name__ == "__main__":
     print("Using header map", map)
 
     for path in args.paths:
-        delete_flac_tags(path, map)
+        delete_flac_tags(path, map, args.follow_links)

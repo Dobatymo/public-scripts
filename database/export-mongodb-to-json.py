@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility[args,json,rich,signal]>=0.0.122",
+#     "genutility[args,json,rich,signal]>=0.0.123",
 #     "pymongo",
 #     "rich",
 # ]
@@ -11,12 +11,14 @@ import logging
 from argparse import ArgumentParser, Namespace
 
 from bson import json_util
-from genutility.args import json_file, non_negative_int
+from genutility.args import is_file, json_file, new_path, non_negative_int
 from genutility.json import json_lines
 from genutility.rich import Progress
 from genutility.signal import HandleKeyboardInterrupt
 from pymongo import MongoClient
 from rich.progress import Progress as RichProgress
+
+logger = logging.getLogger(__name__)
 
 
 def do(args: Namespace) -> None:
@@ -35,9 +37,9 @@ def do(args: Namespace) -> None:
         if not args.out:
             raise ValueError("out is required for find or agg")
 
-        if args.find:
+        if args.find is not None:
             cursor = col.find(args.find, no_cursor_timeout=True)
-        elif args.agg:
+        elif args.agg is not None:
             cursor = col.aggregate(args.agg)
         else:
             raise ValueError("find or agg must be specified")
@@ -52,7 +54,7 @@ def do(args: Namespace) -> None:
                         try:
                             jl.write(doc, default=json_util.default)
                         except TypeError:
-                            logging.warning("Failed to serialize %s", doc)
+                            logger.warning("Failed to serialize %s", doc)
                             raise
 
 
@@ -64,18 +66,20 @@ def main() -> None:
     parser.add_argument("--batch-size", type=non_negative_int, default=10000, help="Batch size")
     parser.add_argument(
         "--tls-ca-file",
+        type=is_file,
         help="Specifies the location of a local .pem file that contains the root certificate chain from the Certificate Authority. This file is used to validate the certificate presented by the mongod/mongos instance.",
     )
     parser.add_argument(
         "--tls-certificate-key-file",
+        type=is_file,
         help="A file containing the client certificate and private key. If you want to pass the certificate and private key as separate files, use the ssl_certfile and ssl_keyfile options instead. Implies tls=True. Defaults to None.",
     )
     parser.add_argument(
         "--tls-crl-file",
+        type=is_file,
         help="A file containing a PEM or DER formatted certificate revocation list. Only supported by python 2.7.9+ (pypy 2.5.1+). Implies tls=True. Defaults to None.",
     )
-    parser.add_argument("--out", help="JsonLines output file")
-
+    parser.add_argument("--out", type=new_path, help="JsonLines output file")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--find", dest="find", type=json.loads, help="Find query")
     group.add_argument("--find-file", dest="find", type=json_file, help="Find query")
@@ -83,9 +87,7 @@ def main() -> None:
     group.add_argument("--agg-file", dest="agg", type=json_file, help="Aggregate query")
     group.add_argument("--count", action="store_true", help="Count documents")
 
-    args = parser.parse_args()
-
-    do(args)
+    do(parser.parse_args())
 
 
 if __name__ == "__main__":

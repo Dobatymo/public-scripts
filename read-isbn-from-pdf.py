@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.9"
 # dependencies = [
-#     "genutility[args,rich]>=0.0.122",
+#     "genutility[args,filesystem,rich]>=0.0.123",
 #     "isbn-hyphenate",
 #     "pyisbn",
 #     "pypdf[crypto]>=6.0.0",
@@ -22,7 +22,8 @@ from typing import Any, Dict, Iterable, Optional, Sequence
 
 import isbn_hyphenate
 import regex  # required for duplicate names in groups
-from genutility.args import positive_int
+from genutility.args import is_dir, is_dir_nofollow, positive_int
+from genutility.filesystem import scandir_ext
 from genutility.rich import Progress
 from isbn_hyphenate.isbn_hyphenate import IsbnUnableToHyphenateError
 from pyisbn import Isbn10, Isbn13
@@ -149,7 +150,12 @@ def test() -> None:
 
 
 def find_isbn(
-    path: Path, num_pages: Optional[int] = None, full_scan: bool = False, do: bool = False, rename_scene: bool = False
+    path: Path,
+    num_pages: Optional[int] = None,
+    full_scan: bool = False,
+    do: bool = False,
+    rename_scene: bool = False,
+    follow_links: bool = False,
 ) -> None:
     cp = regex.compile(good_patterns)
     cap = regex.compile(bad_patterns)
@@ -165,11 +171,18 @@ def find_isbn(
     with RichProgress(*columns, console=console) as p:
         progress = Progress(p)
 
-        paths = list(progress.track(path.rglob("*.pdf"), description="Finding PDFs...", transient=True))
+        entries = list(
+            progress.track(
+                scandir_ext(path, include={".pdf"}, follow_symlinks=follow_links),
+                description="Finding PDFs...",
+                transient=True,
+            )
+        )
 
-        for path in progress.track(paths, description="Reading PDFs...", transient=True):
-            filename_isbns = set(cp.findall(path.name))
-            filename_isbns13 = isbns_to_13_good(filename_isbns, path)
+        for entry in progress.track(entries, description="Reading PDFs...", transient=True):
+            file_path = entry.path
+            filename_isbns = set(cp.findall(entry.name))
+            filename_isbns13 = isbns_to_13_good(filename_isbns, file_path)
             content_isbns: Dict[str, Optional[str]] = {}
 
             if len(filename_isbns) == 0:
@@ -179,54 +192,57 @@ def find_isbn(
                 _filename_isbn = filename_isbns.pop()
                 filename_isbn13, _type = filename_isbns13.popitem()
             else:
-                logging.error("More than one isbn in %s", path.name)
+                logging.error("More than one isbn in %s", entry.name)
                 continue
 
             try:
-                reader = PdfReader(path)
+                reader = PdfReader(file_path)
             except (AttributeError, PdfStreamError, EmptyFileError) as e:
-                logging.error("Failed to read %s (%s): %s", path, type(e).__name__, e)
+                logging.error("Failed to read %s (%s): %s", file_path, type(e).__name__, e)
                 continue
 
             try:
                 for page in islice(reader.pages, num_pages):
                     text = page.extract_text()
 
-                    content_isbns_page = extract(cp, cap, text, path)
+                    content_isbns_page = extract(cp, cap, text, file_path)
                     content_isbns.update(content_isbns_page)
 
                     if not full_scan and content_isbns:
                         break
             except FileNotDecryptedError as e:
-                logging.error("Failed to read %s (%s): %s", path, type(e).__name__, e)
+                logging.error("Failed to read %s (%s): %s", file_path, type(e).__name__, e)
                 continue
 
             if filename_isbn13 and content_isbns:
                 if filename_isbn13 not in content_isbns:
-                    logging.error("error %s: filename isbn %s not in content %s", path, filename_isbn13, content_isbns)
+                    logging.error(
+                        "error %s: filename isbn %s not in content %s", file_path, filename_isbn13, content_isbns
+                    )
                 else:
-                    logging.debug("All good for %s", path)
+                    logging.debug("All good for %s", file_path)
             elif filename_isbn13 and not content_isbns:
-                logging.debug("No content ISBN found for %s", path)
+                logging.debug("No content ISBN found for %s", file_path)
             elif not filename_isbn13 and content_isbns:
                 if len(content_isbns) == 1:
                     content_isbn, _type = content_isbns.popitem()
-                    new = path.with_name(f"{content_isbn} {path.name}")
-                    if " " in path.name or rename_scene:
+                    source = Path(file_path)
+                    new = source.with_name(f"{content_isbn} {entry.name}")
+                    if " " in entry.name or rename_scene:
                         if do:
-                            path.rename(new)
+                            source.rename(new)
                         else:
-                            console.print("rename", path.name, "to", new.name)
+                            console.print("rename", entry.name, "to", new.name)
                     else:
-                        logging.info("Skip scene %s", path)
+                        logging.info("Skip scene %s", file_path)
                 else:
-                    logging.warning("Cannot rename %s: Multiple ISBNs found %s", path, content_isbns)
+                    logging.warning("Cannot rename %s: Multiple ISBNs found %s", file_path, content_isbns)
             else:
-                logging.info("No ISBN found for %s", path)
+                logging.info("No ISBN found for %s", file_path)
 
 
 def main() -> None:
-    from argparse import ArgumentParser
+    from argparse import ArgumentParser, ArgumentTypeError
 
     parser = ArgumentParser()
     parser.add_argument("--num-pages", type=positive_int, default=20, help="Number of pages to search for ISBNs")
@@ -245,7 +261,13 @@ def main() -> None:
     )
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("path", type=Path, help="Input directory use to search for PDF files")
+    parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")
     args = parser.parse_args()
+
+    try:
+        (is_dir if args.follow_links else is_dir_nofollow)(args.path)
+    except ArgumentTypeError as e:
+        parser.error(str(e))
 
     FORMAT = "%(message)s"
     if args.verbose:
@@ -257,7 +279,7 @@ def main() -> None:
     logging.getLogger("pypdf._reader").setLevel(logging.ERROR)
     logging.getLogger("pypdf._page").setLevel(logging.ERROR)
 
-    find_isbn(args.path, args.num_pages, args.full_scan, args.do, args.rename_scene)
+    find_isbn(args.path, args.num_pages, args.full_scan, args.do, args.rename_scene, args.follow_links)
 
 
 if __name__ == "__main__":

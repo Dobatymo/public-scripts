@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.12"
 # dependencies = [
-#     "genutility[args]>=0.0.122",
+#     "genutility[args]>=0.0.123",
 #     "pymediainfo",
 #     "humanfriendly",
 #     "rich",
@@ -14,7 +14,7 @@ from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
 from pathlib import Path
 from typing import Dict, Iterator, Optional, Sequence, Tuple
 
-from genutility.args import byte_size_si, non_negative_int
+from genutility.args import byte_size_si, is_dir, non_negative_int
 from genutility.filesystem import fileextensions
 from genutility.rich import Progress
 from humanfriendly import format_size
@@ -22,26 +22,28 @@ from pymediainfo import MediaInfo
 from rich.logging import RichHandler
 from rich.progress import Progress as RichProgress
 
+logger = logging.getLogger(__name__)
+
 
 def get_bitrate(path: Path) -> Optional[int]:
     media_info = MediaInfo.parse(os.fspath(path))
     try:
         video_tracks = media_info.video_tracks[0]
     except IndexError:
-        logging.debug("%s doesn't have a video track", path)
+        logger.debug("%s doesn't have a video track", path)
         return None
 
     bitrate = video_tracks.bit_rate
 
     if bitrate is None:
-        logging.debug("%s doesn't have a bitrate", path)
+        logger.debug("%s doesn't have a bitrate", path)
         return None
 
     return bitrate
 
 
 def on_error(e: OSError) -> None:
-    logging.debug("Failed to walk %s: %s", e.filename, e)
+    logger.debug("Failed to walk %s: %s", e.filename, e)
 
 
 def count_files_recursive(root: Path, suffixes: Sequence[str]) -> Iterator[Tuple[Path, int, int, int]]:
@@ -64,7 +66,7 @@ def count_files_recursive(root: Path, suffixes: Sequence[str]) -> Iterator[Tuple
             try:
                 bitrate = get_bitrate(path)
             except FileNotFoundError:
-                logging.debug("%s not found", path)
+                logger.debug("%s not found", path)
                 continue
 
             if bitrate is None:
@@ -80,7 +82,7 @@ def count_files_recursive(root: Path, suffixes: Sequence[str]) -> Iterator[Tuple
             try:
                 num_files_, total_size_, total_bitrate_ = counts[path]
             except KeyError:
-                logging.debug("Ignoring subdir %s", path)
+                logger.debug("Ignoring subdir %s", path)
                 continue
             num_files += num_files_
             total_size += total_size_
@@ -88,6 +90,22 @@ def count_files_recursive(root: Path, suffixes: Sequence[str]) -> Iterator[Tuple
 
         counts[dirpath] = (num_files, total_size, total_bitrate)
         yield dirpath, num_files, total_size, total_bitrate
+
+
+def meets_thresholds(
+    num_files: int,
+    total_size: int,
+    total_bitrate: int,
+    min_files: int,
+    min_total_size: int,
+    min_mean_bitrate: int,
+) -> bool:
+    return (
+        num_files > 0
+        and num_files >= min_files
+        and total_size >= min_total_size
+        and total_bitrate / num_files >= min_mean_bitrate
+    )
 
 
 def main() -> None:
@@ -110,7 +128,7 @@ directory that passes the given thresholds.
 """
 
     parser = ArgumentParser(description=description, formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument("path", nargs="+", type=Path, help="Root directory to scan recursively for video files.")
+    parser.add_argument("path", nargs="+", type=is_dir, help="Root directory to scan recursively for video files.")
     parser.add_argument(
         "--min-files",
         type=non_negative_int,
@@ -153,12 +171,18 @@ directory that passes the given thresholds.
                 for path, num_files, total_size, total_bitrate in progress.track(
                     count_files_recursive(basepath, suffixes), description=os.fspath(basepath), transient=True
                 ):
-                    if num_files > args.min_files and total_size > args.min_total_size:
+                    if meets_thresholds(
+                        num_files,
+                        total_size,
+                        total_bitrate,
+                        args.min_files,
+                        args.min_total_size,
+                        args.min_mean_bitrate,
+                    ):
                         mean_bitrate = total_bitrate / num_files
-                        if mean_bitrate > args.min_mean_bitrate:
-                            progress.print(
-                                f"{path} ({num_files}): total size={format_size(total_size, binary=True)}, mean bitrate={format_size(mean_bitrate, binary=True)}"
-                            )
+                        progress.print(
+                            f"{path} ({num_files}): total size={format_size(total_size, binary=True)}, mean bitrate={format_size(mean_bitrate, binary=True)}"
+                        )
     except KeyboardInterrupt:
         print("interrupted")
         sys.exit(1)

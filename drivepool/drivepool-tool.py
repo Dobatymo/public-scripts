@@ -2,7 +2,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #     "ctypes-windows-sdk>=0.0.18",
-#     "genutility[args,file,filesystem,iter,rich,time]>=0.0.122",
+#     "genutility[args,file,filesystem,iter,rich,time]>=0.0.123",
 #     "rich",
 # ]
 # ///
@@ -41,7 +41,7 @@ from cwinsdk.um.winnt import (
     PSECURITY_DESCRIPTOR,
     PSID,
 )
-from genutility.args import non_negative_float
+from genutility.args import is_file_or_new_nofollow, non_negative_float
 from genutility.file import equal_files
 from genutility.filesystem import long_path_support, scandir_error_log_warning, scandir_rec
 from genutility.iter import all_equal, batch
@@ -399,8 +399,9 @@ def validate_duplication_tags(relpath: Path, tags: dict[Path, Optional[Duplicati
 
 
 def get_duplicated(pool: list[Path]) -> list[str]:
-    pool_tags = query_duplication_count(pool, Path())
-    validate_duplication_tags(Path(), pool_tags)
+    root = Path()
+    pool_tags = query_duplication_count(pool, root)
+    validate_duplication_tags(root, pool_tags)
     pool_duplication_count = max(
         (tag.duplication_count for tag in pool_tags.values() if tag is not None and tag.duplication_count is not None),
         default=1,
@@ -415,8 +416,9 @@ def get_duplicated(pool: list[Path]) -> list[str]:
     )
     duplicated = []
     for relpath in root_directories:
-        tags = query_duplication_count(pool, Path(relpath))
-        validate_duplication_tags(Path(relpath), tags)
+        relative_path = Path(relpath)
+        tags = query_duplication_count(pool, relative_path)
+        validate_duplication_tags(relative_path, tags)
         duplication_count = max(
             (tag.duplication_count for tag in tags.values() if tag is not None and tag.duplication_count is not None),
             default=pool_duplication_count,
@@ -507,7 +509,7 @@ def show_duplicated(parser: ArgumentParser, args: Namespace) -> int:
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("-v", "--verbose", action="store_true", help="Show debug information")
-    parser.add_argument("--log", type=Path, help="Write logs to file, otherwise to stderr")
+    parser.add_argument("--log", type=is_file_or_new_nofollow, help="Write logs to file, otherwise to stderr")
 
     subparsers = parser.add_subparsers(dest="action", required=True)
 
@@ -573,7 +575,10 @@ if __name__ == "__main__":
         help="Ignore modification-time differences up to this many seconds",
     )
     subparser_a.add_argument(
-        "--db", type=Path, default="drivepool.sqlite", help="Path of Sqlite database which stores progress"
+        "--db",
+        type=is_file_or_new_nofollow,
+        default="drivepool.sqlite",
+        help="Path of Sqlite database which stores progress",
     )
 
     subparser_b = subparsers.add_parser(

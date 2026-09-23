@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.8"
 # dependencies = [
-#     "genutility>=0.0.122",
+#     "genutility>=0.0.123",
 #     "pillow",
 #     "pyexiv2",
 # ]
@@ -9,12 +9,13 @@
 import logging
 from argparse import ArgumentParser, Namespace
 from os import fspath
-from pathlib import Path
 from typing import Any, Dict
 
 import pyexiv2
-from genutility.args import is_file, positive_float, positive_int
+from genutility.args import is_file, is_file_or_new_nofollow, positive_float, positive_int
 from PIL import Image, ImageOps
+
+logger = logging.getLogger(__name__)
 
 metakeys = ["exif", "iptc", "xmp", "raw_xmp", "comment", "icc"]
 
@@ -37,7 +38,7 @@ def write_meta(path: str, metadata: Dict[str, Any]) -> None:
 def process(args: Namespace) -> None:
     img = Image.open(args.in_path)
     metadata = read_meta(fspath(args.in_path))
-    logging.info(f"Found meta data: {', '.join(metadata.keys())}")
+    logger.info("Found meta data: %s", ", ".join(metadata))
 
     if args.grayscale:
         img = ImageOps.grayscale(img)
@@ -49,17 +50,17 @@ def process(args: Namespace) -> None:
             new_size = args.resize_pixel
         img = img.resize(new_size, resample=Image.Resampling.LANCZOS)
 
-    logging.debug("Saving image to <%s>", args.out_path)
+    logger.debug("Saving image to <%s>", args.out_path)
     img.save(args.out_path)
 
-    logging.debug("Adding metadata to <%s>", args.out_path)
+    logger.debug("Adding metadata to <%s>", args.out_path)
     write_meta(fspath(args.out_path), metadata)
 
 
 def main():
     parser = ArgumentParser("Simple image operations")
     parser.add_argument("--in-path", type=is_file, required=True)
-    parser.add_argument("--out-path", type=Path, required=True)
+    parser.add_argument("--out-path", type=is_file_or_new_nofollow, required=True)
     parser.add_argument("--grayscale", action="store_true")
     parser.add_argument("--resize-ratio", nargs=2, metavar=("W", "H"), type=positive_float)
     parser.add_argument("--resize-pixel", nargs=2, metavar=("W", "H"), type=positive_int)
@@ -67,14 +68,16 @@ def main():
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args()
 
+    if args.out_path.exists() and args.out_path.samefile(args.in_path):
+        parser.error("`--in-path` and `--out-path` refer to the same file")
+
     if args.verbose:
         logging.basicConfig(level=logging.DEBUG)
     else:
         logging.basicConfig(level=logging.INFO)
 
-    if not args.overwrite:
-        if args.in_path.samefile(args.out_path):
-            parser.error("`--in-path` cannot be equal to `--out-path` without `--overwrite`")
+    if not args.overwrite and args.out_path.exists():
+        parser.error("`--out-path` already exists; use `--overwrite` to replace it")
 
     if args.resize_ratio and args.resize_pixel:
         parser.error("Cannot specify `--resize-ratio` and `--resize-pixel`")

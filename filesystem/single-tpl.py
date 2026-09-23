@@ -1,11 +1,8 @@
 from os import fspath
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import FrozenSet
 
 from genutility.file import read_file
-
-if TYPE_CHECKING:
-    from typing import FrozenSet
 
 
 def esc(s):
@@ -18,11 +15,13 @@ def main(inpath: Path, tplpath: Path, outpath: Path, suffixes: FrozenSet[str] = 
 
     paths = [path for path in inpath.iterdir() if path.suffix in suffixes]
 
-    with open(outpath, "w") as fw:
+    outpath.parent.mkdir(parents=True, exist_ok=True)
+
+    with outpath.open("w") as fw:
         fw.write(prepend.format(num=len(paths)))
 
-        for i, path in enumerate(paths):
-            fw.write(
+        fw.writelines(
+            (
                 tpl.format(
                     filename=path.name,
                     efilename=esc(path.name),
@@ -32,12 +31,14 @@ def main(inpath: Path, tplpath: Path, outpath: Path, suffixes: FrozenSet[str] = 
                     i=i,
                 )
             )
+            for i, path in enumerate(paths)
+        )
 
 
 if __name__ == "__main__":
     from argparse import ArgumentParser
 
-    from genutility.args import future_file, is_dir, is_file, suffix
+    from genutility.args import is_dir, is_file, new_path, suffix
 
     parser = ArgumentParser(
         description="""Create a file based on a template for file in directory.
@@ -46,7 +47,7 @@ For example this can be used to create a shell script to include multiple video 
     )
     parser.add_argument("inpath", type=is_dir, help="Directory with files")
     parser.add_argument("tplpath", type=is_file, help="Path to template file.")
-    parser.add_argument("outpath", type=future_file, help="Path to output file.")
+    parser.add_argument("outpath", type=new_path, help="Path to output file.")
     parser.add_argument("--suffixes", nargs="+", default=[], type=suffix, help="Extensions to filter for.")
     prepend_group = parser.add_mutually_exclusive_group(required=False)
     prepend_group.add_argument(
