@@ -12,14 +12,29 @@ import logging
 import re
 from collections import defaultdict
 from hashlib import sha1
-from itertools import combinations
+from heapq import heapify, heappop, heappush
+from itertools import combinations, product
 from pathlib import Path
-from typing import Callable, Collection, DefaultDict, Dict, Iterable, Iterator, List, Mapping, Optional, Sequence, Tuple
+from typing import (
+    Callable,
+    Collection,
+    DefaultDict,
+    Dict,
+    Iterable,
+    Iterator,
+    List,
+    Mapping,
+    Optional,
+    Sequence,
+    TextIO,
+    Tuple,
+)
 
 from genutility.exceptions import ParseError, Skip
+from genutility.file import Empty
 from genutility.fileformats.jfif import hash_raw_jpeg
 from genutility.fileformats.png import hash_raw_png
-from genutility.filesystem import PathType, entrysuffix, fileextensions, scandir_rec
+from genutility.filesystem import PathType, entrysuffix, fileextensions, long_path_support, scandir_rec
 from genutility.fingerprinting import phash_blockmean
 from genutility.hash import hash_file
 from genutility.metrics import hamming_distance
@@ -31,6 +46,8 @@ from rich.highlighter import NullHighlighter
 from rich.logging import RichHandler
 from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsedColumn
 from rich.progress import Progress as RichProgress
+
+logger = logging.getLogger(__name__)
 
 
 def metrohash(path: str) -> bytes:
@@ -47,8 +64,11 @@ def nometahash(path: str) -> bytes:
         except ParseError as e:
             logging.info("Skipping invalid JPEG file %s: %s", path, e)
             raise Skip() from e
-        except EOFError as e:
-            logging.info("Skipping truncated JPEG file %s", path)
+        except (Empty, EOFError) as e:
+            logger.warning("Skipping JPEG file %s: incomplete or empty segment", path)
+            raise Skip() from e
+        except ValueError as e:
+            logger.warning("Skipping JPEG file %s: %s", path, e)
             raise Skip() from e
 
         return hashobj.digest()
@@ -60,7 +80,7 @@ def nometahash(path: str) -> bytes:
         except ParseError as e:
             logging.info("Skipping invalid PNG file %s: %s", path, e)
             raise Skip() from e
-        except EOFError as e:
+        except (Empty, EOFError) as e:
             logging.info("Skipping truncated PNG file %s", path)
             raise Skip() from e
 
@@ -71,6 +91,7 @@ def nometahash(path: str) -> bytes:
 
 
 IGNORE_DIRNAMES = {".git"}
+IMAGE_HASH_BITS = 256
 
 
 def iter_size_path(dirs: Iterable[PathType], include_symlinks: bool = False) -> Iterator[Tuple[int, str]]:
@@ -91,10 +112,12 @@ def iter_size_path(dirs: Iterable[PathType], include_symlinks: bool = False) -> 
 def image_hash_tree(
     dirs: Iterable[PathType],
     exts: Optional[Collection] = None,
-    progressfunc: Optional[Callable[[str, bytes], None]] = None,
-) -> Tuple[BKTree, Dict[bytes, List[str]]]:
-    tree = BKTree(hamming_distance)
-    map: DefaultDict[bytes, List[str]] = defaultdict(list)
+    progressfunc: Optional[Callable[[str, Optional[bytes]], None]] = None,
+    *,
+    original: bool = True,
+) -> Tuple[BKTree[bytes], Dict[bytes, List[str]]]:
+    tree: BKTree[bytes] = BKTree(hamming_distance)
+    paths_by_hash: DefaultDict[bytes, List[str]] = defaultdict(list)
     exts = exts or fileextensions.images
 
     for dir in dirs:
@@ -106,19 +129,109 @@ def image_hash_tree(
                 ext = entrysuffix(entry)[1:].lower()
 
                 if ext in exts:
+                    hashbytes = None
                     try:
                         img = Image.open(entry.path, "r")
                         img.load()  # force load so OSError can be caught here
                     except OSError:
                         logging.warning("Cannot open image: %s", entry.path)
                     else:
-                        hashbytes = phash_blockmean(img)
-                        tree.add(hashbytes)
-                        map[hashbytes].append(entry.path)
+                        hashbytes = phash_blockmean(img, bits=IMAGE_HASH_BITS)
+                        if original or hashbytes not in paths_by_hash:
+                            tree.add(hashbytes)
+                        paths_by_hash[hashbytes].append(entry.path)
                     if progressfunc is not None:
                         progressfunc(entry.path, hashbytes)
 
-    return tree, map
+    return tree, paths_by_hash
+
+
+ImageHashPair = Tuple[int, bytes, bytes]
+
+
+def iter_image_hash_pairs(tree: BKTree[bytes], hashes: Iterable[bytes], max_distance: int) -> Iterator[ImageHashPair]:
+    for left in sorted(hashes):
+        for distance, right in sorted(tree.find(left, max_distance)):
+            if left < right:
+                yield distance, left, right
+
+
+def single_linkage_groups(hashes: Iterable[bytes], pairs: Iterable[ImageHashPair]) -> Iterable[List[bytes]]:
+    parents = {value: value for value in hashes}
+
+    def root(value: bytes) -> bytes:
+        while parents[value] != value:
+            parents[value] = parents[parents[value]]
+            value = parents[value]
+        return value
+
+    for _, left, right in pairs:
+        parents[root(right)] = root(left)
+
+    groups: DefaultDict[bytes, List[bytes]] = defaultdict(list)
+    for value in parents:
+        groups[root(value)].append(value)
+    return groups.values()
+
+
+def complete_linkage_groups(hashes: Iterable[bytes], pairs: Iterable[ImageHashPair]) -> Iterable[List[bytes]]:
+    groups = {value: [value] for value in hashes}
+    neighbors: Dict[bytes, Dict[bytes, int]] = {value: {} for value in groups}
+    candidates = list(pairs)
+    for distance, left, right in candidates:
+        neighbors[left][right] = neighbors[right][left] = distance
+    heapify(candidates)
+
+    while candidates:
+        distance, left, right = heappop(candidates)
+        if neighbors.get(left, {}).get(right) != distance:
+            continue
+
+        # The surviving key is the smallest hash in the merged cluster.
+        groups[left].extend(groups.pop(right))
+        left_neighbors = neighbors[left]
+        right_neighbors = neighbors.pop(right)
+        del left_neighbors[right]
+        del right_neighbors[left]
+        for other in right_neighbors:
+            del neighbors[other][right]
+
+        # Only common neighbors still have every pair within the threshold.
+        for other, old_distance in list(left_neighbors.items()):
+            if other not in right_neighbors:
+                del left_neighbors[other]
+                del neighbors[other][left]
+            elif right_neighbors[other] > old_distance:
+                new_distance = right_neighbors[other]
+                left_neighbors[other] = neighbors[other][left] = new_distance
+                first, second = sorted((left, other))
+                heappush(candidates, (new_distance, first, second))
+
+    return groups.values()
+
+
+def write_image_matches(
+    output: TextIO, tree: BKTree[bytes], paths_by_hash: Mapping[bytes, Sequence[str]], grouping: str, max_distance: int
+) -> None:
+    pairs = iter_image_hash_pairs(tree, paths_by_hash, max_distance)
+    if grouping == "pairs":
+        for _, paths in sorted(paths_by_hash.items()):
+            output.writelines(f"Distance: 0 {[a, b]}\n" for a, b in combinations(sorted(paths), 2))
+        for distance, left, right in pairs:
+            path_pairs = product(sorted(paths_by_hash[left]), sorted(paths_by_hash[right]))
+            output.writelines(f"Distance: {distance} {[a, b]}\n" for a, b in path_pairs)
+        return
+
+    if grouping == "complete-linkage":
+        groups = complete_linkage_groups(paths_by_hash, pairs)
+    else:
+        groups = single_linkage_groups(paths_by_hash, pairs)
+
+    output.write(f"{grouping}, maximum distance threshold: {max_distance}\n")
+    for group in sorted(groups, key=min):
+        paths = sorted(path for value in group for path in paths_by_hash[value])
+        if len(paths) > 1:
+            output.write(f"{paths}\n")
 
 
 def iter_size_hashes(
@@ -134,6 +247,8 @@ def iter_size_hashes(
                 logging.warning("Permission denied: %s", path)
             except FileNotFoundError:
                 logging.warning("File not found: %s", path)
+            except Skip:
+                pass
             else:
                 hashes[hashbytes].append(path)
 
@@ -224,15 +339,17 @@ def dupegroups_no_size(
 
 if __name__ == "__main__":
     import csv
-    from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+    from argparse import SUPPRESS, ArgumentDefaultsHelpFormatter, ArgumentParser
 
-    from genutility.args import is_dir, new_path
+    from genutility.args import in_range, is_dir, new_path
     from genutility.file import StdoutFile
 
     hashfuncs = {"metrohash": metrohash, "no-meta-sha1": nometahash}
 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
-    parser.add_argument("directories", type=is_dir, nargs="+", help="Directory to search")
+    parser.add_argument(
+        "directories", type=is_dir, nargs="+", help="Directories to search. Input roots must not overlap."
+    )
     parser.add_argument(
         "-o",
         "--out",
@@ -260,6 +377,25 @@ if __name__ == "__main__":
         default=("^(.*)$", r"\1"),
         help="Extract key to group by from filename.",
     )
+    parser.add_argument(
+        "--image-grouping",
+        choices=("original", "complete-linkage", "single-linkage", "pairs"),
+        default=SUPPRESS,
+        help=(
+            "Output for --images. The default, original, reports distances 0 through 99 using tree-based groups "
+            "that can overlap, omit matches, or contain pairs farther apart than the heading. "
+            "Complete linkage gives disjoint groups "
+            "with every pair within range and breaks ties by smallest hash. Single linkage gives disjoint groups "
+            "connected by chains of matches, so some members may be farther apart than the threshold. "
+            "Pairs lists every matching file pair and can repeat paths."
+        ),
+    )
+    parser.add_argument(
+        "--image-max-distance",
+        type=in_range(0, IMAGE_HASH_BITS + 1),
+        metavar="BITS",
+        help=f"Inclusive Hamming distance threshold (0 to {IMAGE_HASH_BITS}). Required for all modes except original.",
+    )
 
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--exact", action="store_true", help="Use exact matches to find duplicates")
@@ -274,6 +410,23 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+    try:
+        roots = [(directory, Path(long_path_support(directory)).resolve(strict=True)) for directory in args.directories]
+    except (OSError, RuntimeError) as e:
+        parser.error(f"Cannot resolve input directory ({e})")
+    for (first, left), (second, right) in combinations(roots, 2):
+        if left == right or left in right.parents or right in left.parents:
+            parser.error(f"Input directories overlap ({first} and {second})")
+
+    image_grouping = getattr(args, "image_grouping", "original")
+    original_images = image_grouping == "original"
+    if not args.images and (hasattr(args, "image_grouping") or args.image_max_distance is not None):
+        parser.error("Image grouping and distance options require --images")
+    if args.images:
+        if original_images and args.image_max_distance is not None:
+            parser.error("--image-max-distance requires complete-linkage, single-linkage, or pairs")
+        if not original_images and args.image_max_distance is None:
+            parser.error("--image-max-distance is required for complete-linkage, single-linkage, and pairs")
 
     handler = RichHandler(log_time_format="%Y-%m-%d %H-%M-%S%Z", highlighter=NullHighlighter())
     FORMAT = "%(message)s"
@@ -328,23 +481,27 @@ if __name__ == "__main__":
 
             with StdoutFile(args.out, "xt", encoding="utf-8") as fw:
                 with p.task(description="Hashing images...") as task:
-                    tree, map = image_hash_tree(args.directories, progressfunc=lambda _path, _hash: task.advance(1))
 
-                for d in range(100):
-                    groups = []
+                    def progress(_path: str, _hash: Optional[bytes]) -> None:
+                        task.advance(1)
 
-                    for hashgroup in tree.find_by_distance(d):
-                        files = []
-                        for hashbytes in hashgroup:
-                            files.extend(map[hashbytes])
-                        groups.append(files)
+                    tree, paths_by_hash = image_hash_tree(
+                        args.directories, progressfunc=progress, original=original_images
+                    )
 
-                    if groups:
-                        fw.write(f"Distance: {d}\n")
-                        for hashgroup in groups:
-                            fw.write(f"{hashgroup}\n")
-
-                        fw.write("---\n")
+                if original_images:
+                    for d in range(100):
+                        image_groups = [
+                            [path for value in hashgroup for path in paths_by_hash[value]]
+                            for hashgroup in tree.find_by_distance(d)
+                        ]
+                        if image_groups:
+                            fw.write(f"Distance: {d}\n")
+                            for paths in image_groups:
+                                fw.write(f"{paths}\n")
+                            fw.write("---\n")
+                else:
+                    write_image_matches(fw, tree, paths_by_hash, image_grouping, args.image_max_distance)
 
         elif args.audio:
             parser.error("Duplicate search for audio is no implemented yet")

@@ -52,7 +52,8 @@ def main():
                 return json.dump(td, fw, ensure_ascii=False, indent="\t", sort_keys=False, cls=BuiltinEncoder)
 
             else:
-                del td[b"info"][b"pieces"]
+                # BitTorrent v2 torrents may use a file tree instead of the v1 pieces field.
+                td[b"info"].pop(b"pieces", None)
 
                 try:
                     for file in td[b"info"][b"files"]:

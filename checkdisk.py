@@ -65,9 +65,13 @@ def _print_line(cout, cerr, textb: bytes, endb: bytes, encoding: str) -> None:
         cout.print(text, end="\n")
 
 
-def check_disks(drives: List[str]) -> None:
+def check_disks(drives: List[str], replace: bool = False, ask_continue: bool = False) -> None:
     cout = Console(soft_wrap=True, markup=False)
     cerr = Console(soft_wrap=True, stderr=True, markup=False)
+    stderr = Path("chkdsk.stderr")
+
+    if replace:
+        stderr.write_bytes(b"")
 
     for i, drive in enumerate(drives, 1):
         if not re.match("^[a-zA-Z]:$", drive):
@@ -76,7 +80,7 @@ def check_disks(drives: List[str]) -> None:
 
         cout.print(Panel(drive))
         cmd = ["chkdsk", drive, "/V"]
-        stderr = Path("chkdsk.stderr")
+        stderr_offset = stderr.stat().st_size if stderr.exists() else 0
         encoding = getpreferredencoding()
 
         try:
@@ -98,12 +102,12 @@ def check_disks(drives: List[str]) -> None:
             if proc.returncode != 0:
                 logging.error("Checking `%s` returned %s", drive, proc.returncode)
 
-            assert not stderr.read_bytes()
+            assert not stderr.read_bytes()[stderr_offset:]
 
         except Exception:
             logging.exception("Running chkdsk on %s failed", drive)
 
-        if i < len(drives) and args.ask_continue:
+        if i < len(drives) and ask_continue:
             if not Confirm.ask("Continue with next drive?"):
                 break
 
@@ -123,15 +127,18 @@ def main(args: Namespace) -> None:
             drive = drive.rstrip("\\")
             if drive not in args.ignore:
                 drives.append(drive)
-        check_disks(drives)
+        check_disks(drives, args.replace, args.ask_continue)
 
     else:
-        check_disks(args.select)
+        check_disks(args.select, args.replace, args.ask_continue)
 
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("--ask-continue", action="store_true", help="Ask to continue after every checked drive")
+    parser.add_argument(
+        "--replace", action="store_true", help="Replace chkdsk.stderr instead of appending to it"
+    )
     parser.add_argument("--ignore", nargs="+", default=(), help="Drives not to scan, only used if --select is not")
     parser.add_argument(
         "--select", nargs="+", help="Select drive letters to scan, eg. `C: D:`. If not used all drives are scanned."

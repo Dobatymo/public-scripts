@@ -130,6 +130,18 @@ def _files(
     )
 
 
+def invalid_utf8(args: Namespace, progress: Progress) -> int:
+    with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
+        for entry in _files(
+            args.path, args.include_extensions, args.exclude_extensions, args.recall, progress, args.follow_links
+        ):
+            try:
+                entry.name.encode("utf-8")
+            except UnicodeEncodeError:
+                fw.write(entry.path.encode("utf-8", errors="backslashreplace").decode("utf-8") + "\n")
+    return 0
+
+
 def bad_encoding(args: Namespace, progress: Progress) -> int:
     with StdoutFileNoStyle(progress.progress.console, args.out, "xt") as fw:
         for entry in _files(
@@ -563,6 +575,13 @@ if __name__ == "__main__":
 
     parser = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
     subparsers = parser.add_subparsers(dest="action", required=True)
+
+    subparser_utf8 = subparsers.add_parser(
+        "invalid-utf8",
+        formatter_class=ArgumentDefaultsHelpFormatter,
+        help="Find filenames which cannot be encoded as valid UTF-8 (file contents are not read)",
+    )
+    subparser_utf8.set_defaults(func=invalid_utf8)
 
     subparser_a = subparsers.add_parser(
         "bad-encoding",

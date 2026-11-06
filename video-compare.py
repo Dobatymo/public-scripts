@@ -537,6 +537,10 @@ def action_analyze(args: Namespace) -> int:
                 print(title)
 
                 if args.export:
+                    if args.fps is None:
+                        logger.error("--fps is required when exporting differences")
+                        return 2
+
                     try:
                         validate_output_file(args.export, args.overwrite, (path1, path2))
                     except ArgumentTypeError as e:
@@ -743,10 +747,12 @@ def find_lag(
         offsets, scores = mse_correlation(F, G)
         idx = np.argsort(scores)
     else:
-        out = np.full((size, size), np.nan, dtype=np.float32)
+        size_a = len(images_a)
+        size_b = len(images_b)
+        out = np.full((size_a, size_b), np.nan, dtype=np.float32)
 
-        for i in progress.track(range(size), transient=False):
-            for j in range(size):
+        for i in progress.track(range(size_a), transient=False):
+            for j in range(size_b):
                 out[i, j] = metric_func(images_a[i], images_b[j])
             # batch mode is actually slower
             # out[i] = batch_structural_similarity(np.broadcast_to(images_a[None, i, ...], images_b.shape), images_b)

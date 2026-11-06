@@ -1,3 +1,4 @@
+import errno
 import logging
 import os.path
 import shutil
@@ -20,27 +21,72 @@ def read_csv(path: Path) -> pd.DataFrame:
     return pd.read_csv(path, header=0, keep_default_na=False)
 
 
+def move_no_replace(src: Path, dst: Path) -> None:
+    if os.name == "nt":
+        try:
+            src.rename(dst)
+        except OSError as e:
+            if e.errno != errno.EXDEV:
+                raise
+        else:
+            return
+    else:
+        try:
+            os.link(src, dst, follow_symlinks=False)
+        except FileExistsError:
+            raise
+        except OSError:
+            pass  # Filesystems without hard links use an exclusive copy.
+        else:
+            src.unlink()
+            return
+
+    if src.is_symlink():
+        dst.symlink_to(os.readlink(src), target_is_directory=src.is_dir())
+    else:
+        fw = dst.open("xb")
+        try:
+            with fw, src.open("rb") as fr:
+                shutil.copyfileobj(fr, fw)
+            shutil.copystat(src, dst)
+        except BaseException:
+            dst.unlink()
+            raise
+    src.unlink()
+
+
 def move(args: Namespace, progress: Progress) -> int:
     df = read_csv(args.csv)
 
     assert df["path"].is_unique
-    assert not args.no_check_size, "Unsupported"
 
     is_dir_or_new_nofollow(args.out_path)
-    if args.out_path.exists():
-        if not args.ignore_non_empty_out_path:
-            empty_dir_nofollow(args.out_path)
-    else:
-        args.out_path.mkdir(parents=True)
+    output_exists = args.out_path.exists()
+    if output_exists and not args.ignore_non_empty_out_path:
+        empty_dir_nofollow(args.out_path)
 
-    if args.basepath:
+    filename_only = args.filename_only
+
+    if filename_only:
+        basepath = None
+    elif args.basepath:
         basepath = args.basepath
     else:
         basepath = Path(os.path.commonpath(df["path"].tolist()))
         logger.info("Using base path `%s`", basepath)
 
-    for path, filesize in df[["path", "filesize"]].itertuples(index=False):
+    if args.no_check_size:
+        rows = ((path, None) for path in df["path"])
+    else:
+        rows = df[["path", "filesize"]].itertuples(index=False)
+
+    file_moves = []
+    source_paths = set()
+    source_ids = set()
+
+    for path, filesize in rows:
         srcpath = Path(path)
+        source_paths.add(srcpath.resolve())
 
         try:
             stats = srcpath.stat()
@@ -48,27 +94,78 @@ def move(args: Namespace, progress: Progress) -> int:
             logger.warning("File not found: %s", srcpath)
             continue
 
+        if stats.st_ino:
+            source_ids.add((stats.st_dev, stats.st_ino))
         actualsize = stats.st_size
-        if actualsize != filesize:
+        if filesize is not None and actualsize != filesize:
             logger.warning(
                 "Skipping %s since actual filesize %d doesn't match expected one %d", srcpath, actualsize, filesize
             )
             continue
 
-        relpath = srcpath.relative_to(basepath)
-        destpath = args.out_path / relpath
+        if filename_only:
+            destpath = args.out_path / srcpath.name
+        else:
+            assert basepath is not None
+            destpath = args.out_path / srcpath.relative_to(basepath)
+
+        file_moves.append((srcpath, destpath, stats))
+
+    destinations = set()
+    collision_destinations = set()
+    for srcpath, destpath, _ in file_moves:
+        try:
+            dest_stats = destpath.stat()
+        except FileNotFoundError:
+            destination_id = None
+        else:
+            destination_id = (dest_stats.st_dev, dest_stats.st_ino)
+
+        if destpath.resolve() in source_paths or destination_id in source_ids:
+            raise FileExistsError(f"Source and destination overlap ({srcpath} -> {destpath})")
+
+        if destpath in destinations or os.path.lexists(destpath):
+            if args.collision_mode == "fail":
+                raise FileExistsError(f"Destination collision: {srcpath} -> {destpath}")
+            collision_destinations.add(destpath)
+        destinations.add(destpath)
+
+    if not output_exists:
+        args.out_path.mkdir(parents=True)
+
+    for srcpath, destpath, stats in file_moves:
+        has_collision = destpath in collision_destinations or os.path.lexists(destpath)
+        if has_collision and args.collision_mode == "fail":
+            raise FileExistsError(f"Destination collision: {srcpath} -> {destpath}")
+        if has_collision and args.collision_mode == "no-move":
+            logger.info("Skipping `%s` because destination exists: `%s`", srcpath, destpath)
+            continue
+        if has_collision and destpath.is_dir():
+            raise IsADirectoryError(f"Destination is a directory: {destpath}")
+
         if args.do:
             writeable = is_writeable(stats)
             if not writeable:
                 make_writeable(srcpath, stats)
 
-            destpath.parent.mkdir(parents=True, exist_ok=True)
-            shutil.move(srcpath, destpath)
-
-            if not writeable:
-                make_readonly(destpath, stats)
+            try:
+                destpath.parent.mkdir(parents=True, exist_ok=True)
+                if args.collision_mode == "overwrite":
+                    shutil.move(srcpath, destpath)
+                else:
+                    try:
+                        move_no_replace(srcpath, destpath)
+                    except FileExistsError:
+                        if args.collision_mode == "fail":
+                            raise
+                        logger.info("Skipping `%s` because destination exists: `%s`", srcpath, destpath)
+                        continue
+            finally:
+                if not writeable:
+                    make_readonly(srcpath if srcpath.exists() else destpath, stats)
         else:
-            logger.info("Moving `%s` to `%s`", srcpath, destpath)
+            action = "Overwriting" if has_collision else "Moving"
+            logger.info("%s `%s` to `%s`", action, srcpath, destpath)
 
     return 0
 
@@ -137,6 +234,13 @@ if __name__ == "__main__":
         "--ignore-non-empty-out-path",
         action="store_true",
         help="Use outpath even if it's not empty. Existing files may be overwritten.",
+    )
+    subparser_a.add_argument(
+        "--collision-mode",
+        choices=("fail", "overwrite", "no-move"),
+        default="fail",
+        metavar="MODE",
+        help="Handle destination collisions: fail (default), overwrite, or no-move. Overlap with any source is an error.",
     )
 
     subparser_b = subparsers.add_parser(

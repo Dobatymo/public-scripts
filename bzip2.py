@@ -1,7 +1,6 @@
 import argparse
+import os
 import sys
-from contextlib import nullcontext
-from pathlib import Path
 
 from genutility.args import is_file, is_file_or_new_nofollow
 from genutility.file import copen, copyfilelike
@@ -42,27 +41,54 @@ compression.add_argument("-9", "--best", action="store_true", default=True)
 parser.add_argument("path", type=is_file)
 args = parser.parse_args()
 
-outpath = Path(f"{args.path}.bz2")
-if not args.stdout:
+input_path = args.path
+decompress = args.decompress or args.test
+
+if decompress:
+    suffix = input_path.suffix.lower()
+    if suffix in (".bz2", ".bz"):
+        outpath = input_path.with_suffix("")
+    elif suffix in (".tbz2", ".tbz"):
+        outpath = input_path.with_suffix(".tar")
+    else:
+        outpath = input_path.with_name(input_path.name + ".out")
+else:
+    outpath = input_path.with_name(input_path.name + ".bz2")
+
+if not args.stdout and not args.test:
     try:
         output_exists = outpath.exists()
         is_file_or_new_nofollow(outpath)
     except argparse.ArgumentTypeError as e:
         parser.error(str(e))
 
-    if output_exists and outpath.samefile(args.path):
+    if output_exists and outpath.samefile(input_path):
         parser.error("input and output paths refer to the same file")
     if output_exists and not args.force:
         parser.error(f"{outpath} already exists; use --force to replace it")
 
-with open(args.path, "rb") as fr:
-    if args.stdout:
-        context = nullcontext(sys.stdout.buffer)
-    else:
-        context = copen(outpath, "wb" if args.force else "xb")
+compression_level = next(
+    (level for level in range(1, 9) if getattr(args, "fast" if level == 1 else str(level))), 9
+)
 
-    with context as fw:
-        copyfilelike(fr, fw)
+with input_path.open("rb") as raw:
+    with copen(raw, "rb", ext=".bz2" if decompress else None) as fr:
+        if args.test:
+            with copen(os.devnull, "wb") as fw:
+                copyfilelike(fr, fw)
+        elif args.stdout:
+            with copen(
+                sys.stdout.buffer, "wb", ext=None if decompress else ".bz2", compresslevel=compression_level
+            ) as fw:
+                copyfilelike(fr, fw)
+        else:
+            with copen(
+                outpath,
+                "wb" if args.force else "xb",
+                compresslevel=compression_level,
+                handle_archives=not decompress,
+            ) as fw:
+                copyfilelike(fr, fw)
 
-# if not args.keep:
-# 	os.remove(args.path)
+if not args.keep and not args.stdout and not args.test:
+    input_path.unlink()

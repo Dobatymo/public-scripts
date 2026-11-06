@@ -39,11 +39,29 @@ def remove_empty_dirs(path: str, ignore_errors: bool = False, onerror: Optional[
                 raise
 
 
-def move_rename(src: Path, dst: Path):
-    raise RuntimeError("Not implemented")
+def rename_no_replace(src: Path, dst: Path) -> None:
+    """Rename a file without replacing an existing destination."""
+    if os.name == "nt":
+        src.rename(dst)
+    else:
+        os.link(src, dst, follow_symlinks=False)
+        src.unlink()
 
 
-MODES = ("fail", "no_move", "overwrite", "rename")
+def move_rename(src: Path, dst: Path) -> None:
+    for i in range(1, 2**31):
+        candidate = dst.with_name(f"{dst.stem} ({i}){dst.suffix}")
+        try:
+            rename_no_replace(src, candidate)
+        except FileExistsError:
+            continue
+        else:
+            return
+
+    raise RuntimeError(f"Could not find a free name for {dst}")
+
+
+MODES = ("fail", "no_move", "overwrite", "overwrite-newer", "rename", "interactive")
 
 
 def merge(src: Path, dst: Path, mode: str = "no_move", do: bool = False, follow_links: bool = False) -> None:
@@ -80,11 +98,27 @@ def merge(src: Path, dst: Path, mode: str = "no_move", do: bool = False, follow_
                         os.replace(os.fspath(path), os.fspath(target))
                     else:
                         print("Replace", path, target)
+                elif mode == "overwrite-newer":
+                    if path.stat().st_mtime_ns > target.stat().st_mtime_ns:
+                        if do:
+                            os.replace(os.fspath(path), os.fspath(target))
+                        else:
+                            print("Replace", path, target)
                 elif mode == "rename":
                     if do:
                         move_rename(path, target)
                     else:
                         print("move_rename", path, target)
+                elif mode == "interactive":
+                    if do:
+                        try:
+                            answer = input(f"Replace {target} with {path}? [y/N] ")
+                        except EOFError:
+                            answer = ""
+                        if answer.lower() in ("y", "yes"):
+                            os.replace(os.fspath(path), os.fspath(target))
+                    else:
+                        print("Ask", path, target)
             else:
                 if do:
                     path.rename(target)  # race condition on linux, us renameat2 with RENAME_NOREPLACE?
@@ -98,14 +132,22 @@ def merge(src: Path, dst: Path, mode: str = "no_move", do: bool = False, follow_
 
 
 def main():
-    parser = ArgumentParser()
+    parser = ArgumentParser(
+        description="Merge source into target. Actual moves require both directories to be on the same filesystem; dry runs work across filesystems."
+    )
     parser.add_argument("src", type=Path, help="Source directory")
     parser.add_argument("dst", type=is_dir_nofollow, help="Target directory")
     parser.add_argument(
         "--mode",
         choices=MODES,
         default="no_move",
-        help="Specifies the handling of files in src which already exist in dst.",
+        metavar="MODE",
+        help=(
+            "Collision policy for files already in dst: "
+            "fail aborts, no_move skips (default), overwrite replaces dst, "
+            "overwrite-newer replaces only when src is newer, rename keeps both "
+            "using the first available numbered name, and interactive asks before replacing."
+        ),
     )
     parser.add_argument("--do", action="store_true", help="Actually perform actions")
     parser.add_argument("--follow-links", action="store_true", help="Follow file and directory links during scanning")

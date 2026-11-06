@@ -26,14 +26,14 @@ from genutility.rich import MarkdownHighlighter, Progress, StdoutFileNoStyle
 from rich.logging import RichHandler
 from rich.progress import BarColumn, MofNCompleteColumn, TextColumn, TimeElapsedColumn
 from rich.progress import Progress as RichProgress
-from typing_extensions import NotRequired, Self
+from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
 
 
 class Meta(TypedDict):
     hash: Optional[bytes]
-    size: NotRequired[int]
+    size: Optional[int]
 
 
 def get_hash_name(hashcls: HashCls) -> str:
@@ -110,15 +110,15 @@ class Formatter:
     def header(self, hashname: str) -> None:
         pass
 
-    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+    def format_line(self, hexdigest: str, path: str, size: Optional[int]) -> None:
         raise NotImplementedError
 
-    def format_total(self, hexdigest: str, path: str, size: int) -> None:
+    def format_total(self, hexdigest: str, path: str, size: Optional[int]) -> None:
         self.format_line(hexdigest, path, size)
 
 
 class Hashsum(Formatter):
-    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+    def format_line(self, hexdigest: str, path: str, size: Optional[int]) -> None:
         self.stream.write(f"{hexdigest} *{path}\n")
 
 
@@ -127,15 +127,17 @@ class Hashdeep(Formatter):
         self.stream.write("%%%% HASHDEEP-1.0\n")
         self.stream.write(f"%%%% size,{hashname},filename\n")
 
-    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+    def format_line(self, hexdigest: str, path: str, size: Optional[int]) -> None:
+        assert size is not None
         self.stream.write(f"{size},{hexdigest},{path}\n")
 
-    def format_total(self, hexdigest: str, path: str, size: int) -> None:
+    def format_total(self, hexdigest: str, path: str, size: Optional[int]) -> None:
+        assert size is not None
         self.stream.write(f"% {size},{hexdigest},{path}\n")
 
 
 class SFV(Formatter):
-    def format_line(self, hexdigest: str, path: str, size: int) -> None:
+    def format_line(self, hexdigest: str, path: str, size: Optional[int]) -> None:
         self.stream.write(f"{path} {hexdigest}\n")
 
 
@@ -215,7 +217,7 @@ class DirHasher:
 
                 hashhex, path = m.groups()
                 hashbytes = bytes(bytearray.fromhex(hashhex))
-                metas.append({"hash": hashbytes})
+                metas.append({"hash": hashbytes, "size": None})
                 paths.append(path)
 
         return cls(paths, metas, hashname, None)
@@ -249,7 +251,13 @@ class DirHasher:
         include_names: bool = True,
     ) -> None:
         total_hexdigest = self.total(hashcls, include_names).hexdigest()
-        total_size = sum(meta["size"] for meta in self.metas)
+        total_size: Optional[int] = 0
+        for meta in self.metas:
+            if meta["size"] is None:
+                total_size = None
+                break
+            assert total_size is not None
+            total_size += meta["size"]
         formatter.format_total(total_hexdigest, self.toppath, total_size)
 
     def total(self, hashcls: HashCls = hashlib.sha1, include_names: bool = True) -> Hashobj:

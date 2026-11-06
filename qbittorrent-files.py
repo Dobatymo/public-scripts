@@ -46,12 +46,20 @@ class QBittorrentMeta:
 
         info_hash = self.path_to_info_hash(path)
         torrentpath = self.get_fastresume_path(info_hash)
+        assert path.is_absolute()
+        assert torrentpath.is_absolute()
 
-        if path == torrentpath or dry:
+        if dry:
             return False
-        else:
-            path.rename(torrentpath)
-            return True
+
+        try:
+            if path.samefile(torrentpath):
+                return False
+        except FileNotFoundError:
+            pass
+
+        path.rename(torrentpath)
+        return True
 
     def single_file_moved(self, path: Path, dry: bool = True) -> bool:
         """Finds torrent which matches `path` and adjusts fastresume meta data."""
@@ -87,9 +95,9 @@ class QBittorrentMeta:
         fastresumepath = self.btpath / f"{info_hash}.fastresume"
         write_torrent(bb, fastresumepath)
 
-    def get_fastresume_path(self, info_hash: str) -> str:
+    def get_fastresume_path(self, info_hash: str) -> Path:
         bb = self.read_fastresume_file(info_hash)
-        return bb["save_path"]
+        return Path(bb["save_path"])
 
     def set_fastresume_path(self, info_hash: str, torrentpath: str) -> bool:
         bb = self.read_fastresume_file(info_hash)
@@ -160,13 +168,14 @@ def match_directory(
     """
 
     qb = QBittorrentMeta(bt_backup)
+    path = Path(path).absolute()
     it = scandir_rec(path, rec=recursive, follow_symlinks=follow_links)
 
     if move_files:
         for entry in it:
             p = Path(entry.path)
             try:
-                if qb.move_single_file(p):
+                if qb.move_single_file(p, dry=False):
                     logger.info("Moved file %s", p)
                 else:
                     logger.info("File %s already in destination", p)

@@ -2,7 +2,7 @@
 # requires-python = ">=3.8"
 # dependencies = [
 #     "genutility[args,json,rich,signal]>=0.0.123",
-#     "pymongo",
+#     "pymongo>=4",
 #     "rich",
 # ]
 # ///
@@ -32,7 +32,7 @@ def do(args: Namespace) -> None:
     col = client[args.database][args.collection]
 
     if args.count:
-        print(col.count())
+        print(col.count_documents({}))
     elif args.find is not None or args.agg is not None:
         if not args.out:
             raise ValueError("out is required for find or agg")

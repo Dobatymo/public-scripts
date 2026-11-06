@@ -38,7 +38,7 @@ if __name__ == "__main__":
         new_path,
         positive_float,
     )
-    from genutility.filesystem import scandir_rec
+    from genutility.filesystem import entrysuffix, scandir_rec
 
     parser = ArgumentParser(description="Apply simple transformations to srt subtitles files.")
     parser.add_argument("inpath", type=is_file_or_dir, help="Input file or directory.")
@@ -73,6 +73,8 @@ if __name__ == "__main__":
     if not input_is_file:
         args.outpath.mkdir(parents=True)
         for infile in scandir_rec(args.inpath, dirs=False, follow_symlinks=args.follow_links, relative=True):
+            if entrysuffix(infile).lower() != ".srt":
+                continue
             outfile = args.outpath / infile.relpath
             outfile.parent.mkdir(parents=True, exist_ok=True)
             print(f"In file: {infile.path}")

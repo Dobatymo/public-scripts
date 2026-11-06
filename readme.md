@@ -2,6 +2,17 @@
 
 Requires Python 3.7+. Each file represents a single purpose application.
 
+## filesystem/find
+
+Find filenames that cannot be encoded as valid UTF-8:
+
+```console
+python filesystem/find.py invalid-utf8 <INPUT_ROOT>
+python filesystem/find.py -i .txt invalid-utf8 <INPUT_ROOT>
+```
+
+This scans files recursively without reading their contents. Invalid surrogate characters are printed as `\uXXXX` escapes so results can be displayed or saved with `--out`. Valid Unicode names, including names that look garbled, are not flagged.
+
 ## files/file-part-compare
 
 Check if the content of two binary files is the same. Different offsets into the files can be used.
